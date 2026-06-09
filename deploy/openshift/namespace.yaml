@@ -1,0 +1,120 @@
+# Namespace éphémère + garde-fous, pour UNE équipe. Rendu via envsubst.
+# Variables : $NS, $TEAM, $EXPIRES
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${NS}
+  labels:
+    app.kubernetes.io/part-of: agentathon
+    agentathon/team: "${TEAM}"
+    agentathon/ephemeral: "true"
+  annotations:
+    # Le reaper (CronJob) supprime les namespaces dont la date est dépassée.
+    agentathon/expires-at: "${EXPIRES}"
+---
+# Plafond de ressources : empêche un participant de monopoliser le cluster.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: lab-quota
+  namespace: ${NS}
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    limits.cpu: "4"
+    limits.memory: 8Gi
+    pods: "10"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: lab-limits
+  namespace: ${NS}
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 256Mi
+---
+# Deny-by-default : aucun trafic entrant sauf ce qu'on autorise explicitement.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: ${NS}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# Autorise le DNS (résolution) et les appels sortants HTTPS vers l'endpoint
+# du modèle. ADAPTEZ le bloc 'to' à votre endpoint approuvé (Bedrock/Azure) :
+# idéalement restreignez par CIDR/egress IP plutôt que 0.0.0.0/0.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-and-model-egress
+  namespace: ${NS}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - ipBlock: { cidr: 0.0.0.0/0 }   # ⚠ à restreindre à l'endpoint modèle
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+# Autorise l'ingress vers le runtime (depuis le router OpenShift).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-router-ingress
+  namespace: ${NS}
+spec:
+  podSelector:
+    matchLabels: { app: lab-runtime }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { policy-group.network.openshift.io/ingress: "" }
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+# Maillage interne : le runtime doit pouvoir joindre les 4 serveurs MCP
+# (default-deny bloque sinon le trafic pod-à-pod). On autorise uniquement les
+# ports MCP, et seulement à l'intérieur du namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-mcp
+  namespace: ${NS}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - { protocol: TCP, port: 9101 }
+        - { protocol: TCP, port: 9102 }
+        - { protocol: TCP, port: 9103 }
+        - { protocol: TCP, port: 9104 }
+  egress:
+    - to:
+        - podSelector: {}
+      ports:
+        - { protocol: TCP, port: 9101 }
+        - { protocol: TCP, port: 9102 }
+        - { protocol: TCP, port: 9103 }
+        - { protocol: TCP, port: 9104 }

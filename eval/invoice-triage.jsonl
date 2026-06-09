@@ -1,0 +1,4 @@
+{"input": "Contrôle la facture INV-2026-0042", "expect_decision": "PAYER", "note": "tout cohérent, fournisseur actif"}
+{"input": "Vérifie la facture de Globex (INV-2026-0043)", "expect_decision": "ESCALADER", "note": "montant > 10000 et fournisseur absent du CRM"}
+{"input": "Rapproche la facture INV-2026-0044", "expect_decision": "REJETER", "note": "HT+TVA != TTC"}
+{"input": "Traite la facture INV-2026-0045 (Umbrella)", "expect_decision": "ESCALADER", "note": "fournisseur inactif"}

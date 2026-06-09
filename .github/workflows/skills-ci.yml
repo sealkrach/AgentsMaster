@@ -1,0 +1,44 @@
+# Gate "ship-a-skill" : une PR ne merge que si les skills sont valides et les contrats tiennent.
+name: skills-ci
+
+on:
+  pull_request:
+    paths:
+      - "skills/**"
+      - "eval/**"
+      - "runtime/**"
+      - "mcp_servers/**"
+      - "mock_sources/**"
+      - "prod-mcp/**"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Valider les skills (frontmatter, corps, eval)
+        run: python scripts/validate_skills.py
+      - name: Parité des contrats (prod idp_mcp == kit mock)
+        run: python prod-mcp/tests/test_parity.py
+      - name: Garde SQL lecture seule
+        run: python prod-mcp/tests/test_sqlguard.py
+
+  eval:
+    runs-on: ubuntu-latest
+    needs: validate
+    # Ne tourne que si activé : définissez la variable de repo RUN_SKILL_EVAL=true
+    # et les secrets LAB_MODEL (+ ANTHROPIC_API_KEY) pointant vers l'endpoint approuvé.
+    if: ${{ vars.RUN_SKILL_EVAL == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt --quiet
+      - name: Évaluer les skills (in-proc, modèle approuvé)
+        env:
+          LAB_MODEL: ${{ secrets.LAB_MODEL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MCP_MODE: inproc          # pas de serveurs MCP/DB à lancer en CI
+        run: python eval/run_eval.py

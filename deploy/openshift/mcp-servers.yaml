@@ -1,0 +1,95 @@
+# Les 4 serveurs MCP, dans le namespace d'une équipe. Via envsubst. Variables : $NS, $IMAGE
+# Même image que le runtime, commande différente (python -m mcp_servers <name>).
+# Le runtime les joint par DNS interne : http://mcp-<name>.$NS.svc:910x/mcp
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: mcp-documents, namespace: "${NS}", labels: { app: mcp-documents } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mcp-documents } }
+  template:
+    metadata: { labels: { app: mcp-documents } }
+    spec:
+      containers:
+        - name: mcp
+          image: ${IMAGE}
+          command: ["python", "-m", "mcp_servers", "documents"]
+          env: [{ name: MCP_HOST, value: "0.0.0.0" }]
+          ports: [{ containerPort: 9101 }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: mcp-documents, namespace: "${NS}" }
+spec:
+  selector: { app: mcp-documents }
+  ports: [{ port: 9101, targetPort: 9101 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: mcp-relational, namespace: "${NS}", labels: { app: mcp-relational } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mcp-relational } }
+  template:
+    metadata: { labels: { app: mcp-relational } }
+    spec:
+      containers:
+        - name: mcp
+          image: ${IMAGE}
+          command: ["python", "-m", "mcp_servers", "relational"]
+          env: [{ name: MCP_HOST, value: "0.0.0.0" }]
+          ports: [{ containerPort: 9102 }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: mcp-relational, namespace: "${NS}" }
+spec:
+  selector: { app: mcp-relational }
+  ports: [{ port: 9102, targetPort: 9102 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: mcp-vector, namespace: "${NS}", labels: { app: mcp-vector } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mcp-vector } }
+  template:
+    metadata: { labels: { app: mcp-vector } }
+    spec:
+      containers:
+        - name: mcp
+          image: ${IMAGE}
+          command: ["python", "-m", "mcp_servers", "vector"]
+          env: [{ name: MCP_HOST, value: "0.0.0.0" }]
+          ports: [{ containerPort: 9103 }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: mcp-vector, namespace: "${NS}" }
+spec:
+  selector: { app: mcp-vector }
+  ports: [{ port: 9103, targetPort: 9103 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: mcp-graph, namespace: "${NS}", labels: { app: mcp-graph } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mcp-graph } }
+  template:
+    metadata: { labels: { app: mcp-graph } }
+    spec:
+      containers:
+        - name: mcp
+          image: ${IMAGE}
+          command: ["python", "-m", "mcp_servers", "graph"]
+          env: [{ name: MCP_HOST, value: "0.0.0.0" }]
+          ports: [{ containerPort: 9104 }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: mcp-graph, namespace: "${NS}" }
+spec:
+  selector: { app: mcp-graph }
+  ports: [{ port: 9104, targetPort: 9104 }]

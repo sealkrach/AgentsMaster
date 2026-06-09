@@ -1,0 +1,11 @@
+apiVersion: v2
+name: agentathon-lab
+description: >-
+  Lab agentathon — runtime DeepAgents + 4 serveurs MCP, dans un namespace
+  éphémère et isolé. K8s-agnostique (Gateway API, NetworkPolicies standard).
+  Une release Helm = une équipe = un namespace.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+# Gateway API HTTPRoute v1 (GA) suppose un cluster récent + les CRDs Gateway API.
+kubeVersion: ">=1.26.0-0"

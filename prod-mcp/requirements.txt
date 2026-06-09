@@ -1,0 +1,7 @@
+# Catalogue MCP de production (P1). Épinglez les versions exactes avant la prod.
+mcp>=1.2
+asyncpg>=0.29            # PostgreSQL async (relational + documents)
+python-arango>=8.0       # ArangoDB (graph)
+qdrant-client>=1.9       # Qdrant (vector)
+httpx>=0.27              # provider d'embedding 'http'
+# fastembed              # décommentez si provider d'embedding 'fastembed' (offline)

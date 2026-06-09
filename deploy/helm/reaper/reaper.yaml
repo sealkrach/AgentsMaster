@@ -1,0 +1,74 @@
+# Reaper TTL — auto-destruction des namespaces éphémères expirés.
+# À déployer UNE FOIS dans un namespace d'admin (hors releases d'équipe) :
+#   kubectl apply -f deploy/helm/reaper/reaper.yaml
+# Adaptez le namespace d'admin et l'image kubectl à votre contexte.
+# Logique : supprime tout ns labellisé agentathon/ephemeral=true dont
+#   creationTimestamp + agentathon/ttl-hours est dépassé.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentathon-admin
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agentathon-reaper
+  namespace: agentathon-admin
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agentathon-reaper
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agentathon-reaper
+subjects:
+  - kind: ServiceAccount
+    name: agentathon-reaper
+    namespace: agentathon-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: agentathon-reaper
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: agentathon-reaper
+  namespace: agentathon-admin
+spec:
+  schedule: "*/15 * * * *"          # toutes les 15 minutes
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 300
+      template:
+        spec:
+          serviceAccountName: agentathon-reaper
+          restartPolicy: Never
+          containers:
+            - name: reaper
+              image: bitnami/kubectl:latest    # adaptez à une image kubectl interne
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  now=$(date -u +%s)
+                  for ns in $(kubectl get ns -l agentathon/ephemeral=true -o jsonpath='{.items[*].metadata.name}'); do
+                    ttl=$(kubectl get ns "$ns" -o jsonpath="{.metadata.labels['agentathon/ttl-hours']}")
+                    [ -z "${ttl:-}" ] && continue
+                    created=$(kubectl get ns "$ns" -o jsonpath='{.metadata.creationTimestamp}')
+                    cs=$(date -u -d "$created" +%s)
+                    exp=$(( cs + ttl * 3600 ))
+                    if [ "$now" -gt "$exp" ]; then
+                      echo "reaper: suppression $ns (créé $created, ttl ${ttl}h, expiré)"
+                      kubectl delete ns "$ns" --wait=false
+                    fi
+                  done

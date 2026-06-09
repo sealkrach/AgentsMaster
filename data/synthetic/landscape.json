@@ -1,0 +1,58 @@
+{
+  "documents": [
+    {"id": "INV-2026-0042", "type": "invoice", "issuer": "Acme Cloud SAS", "date": "2026-05-12", "amount_ht": 4200.00, "vat": 840.00, "amount_ttc": 5040.00, "currency": "EUR", "po_number": "PO-77123", "text": "Facture Acme Cloud SAS, hébergement cloud mai 2026, HT 4200 TVA 840 TTC 5040 EUR, contrat CTR-2025-09, bon de commande PO-77123."},
+    {"id": "INV-2026-0043", "type": "invoice", "issuer": "Globex Consulting Ltd", "date": "2026-05-18", "amount_ht": 12000.00, "vat": 2400.00, "amount_ttc": 14400.00, "currency": "EUR", "po_number": null, "text": "Facture Globex Consulting, mission conseil stratégie data 15 jours, HT 12000 TVA 2400 TTC 14400 EUR, sans bon de commande."},
+    {"id": "INV-2026-0044", "type": "invoice", "issuer": "Initech", "date": "2026-05-20", "amount_ht": 1000.00, "vat": 200.00, "amount_ttc": 1180.00, "currency": "EUR", "po_number": "PO-77140", "text": "Facture Initech, maintenance applicative, HT 1000 TVA 200 TTC 1180 (incohérence), contrat CTR-2024-03."},
+    {"id": "INV-2026-0045", "type": "invoice", "issuer": "Umbrella Supplies GmbH", "date": "2026-05-22", "amount_ht": 900.00, "vat": 180.00, "amount_ttc": 1080.00, "currency": "EUR", "po_number": null, "text": "Facture Umbrella Supplies, fournitures diverses, HT 900 TVA 180 TTC 1080 EUR."},
+    {"id": "CTR-2025-09", "type": "contract", "issuer": "Acme Cloud SAS", "date": "2025-09-01", "text": "Contrat cadre d'hébergement cloud entre la banque et Acme Cloud SAS, durée 24 mois, couvre l'hébergement cloud et le support 24/7, plafond annuel 120000 EUR."},
+    {"id": "CTR-2024-03", "type": "contract", "issuer": "Initech", "date": "2024-03-15", "text": "Contrat de maintenance applicative avec Initech, renouvellement tacite annuel, couvre la maintenance corrective et évolutive."},
+    {"id": "LET-2026-0007", "type": "letter", "issuer": "Direction RH", "date": "2026-05-15", "text": "Note de service RH relative aux congés d'été. Document non comptable."}
+  ],
+  "chunks": [
+    {"id": "c1", "doc_id": "INV-2026-0042", "text": "hébergement cloud Acme prestation mai 2026 montant TTC 5040 EUR contrat CTR-2025-09"},
+    {"id": "c2", "doc_id": "CTR-2025-09", "text": "contrat cadre hébergement cloud Acme durée 24 mois support 24/7 plafond annuel 120000 EUR"},
+    {"id": "c3", "doc_id": "INV-2026-0043", "text": "mission conseil stratégie data Globex 15 jours 14400 EUR sans bon de commande"},
+    {"id": "c4", "doc_id": "INV-2026-0044", "text": "maintenance applicative Initech incohérence montant contrat CTR-2024-03"},
+    {"id": "c5", "doc_id": "CTR-2024-03", "text": "contrat maintenance applicative Initech renouvellement tacite corrective évolutive"},
+    {"id": "c6", "doc_id": "LET-2026-0007", "text": "note de service congés été ressources humaines"},
+    {"id": "c7", "doc_id": "INV-2026-0045", "text": "fournitures diverses Umbrella Supplies montant TTC 1080 EUR fournisseur inactif"}
+  ],
+  "entities": [
+    {"id": "supplier:acme", "type": "supplier", "name": "Acme Cloud SAS", "status": "actif", "payment_terms": "30 jours net"},
+    {"id": "supplier:globex", "type": "supplier", "name": "Globex Consulting Ltd", "status": "inconnu", "payment_terms": null},
+    {"id": "supplier:initech", "type": "supplier", "name": "Initech", "status": "actif", "payment_terms": "45 jours net"},
+    {"id": "supplier:umbrella", "type": "supplier", "name": "Umbrella Supplies GmbH", "status": "inactif", "payment_terms": "30 jours net"},
+    {"id": "invoice:INV-2026-0042", "type": "invoice", "name": "INV-2026-0042"},
+    {"id": "invoice:INV-2026-0043", "type": "invoice", "name": "INV-2026-0043"},
+    {"id": "invoice:INV-2026-0044", "type": "invoice", "name": "INV-2026-0044"},
+    {"id": "invoice:INV-2026-0045", "type": "invoice", "name": "INV-2026-0045"},
+    {"id": "contract:CTR-2025-09", "type": "contract", "name": "CTR-2025-09"},
+    {"id": "contract:CTR-2024-03", "type": "contract", "name": "CTR-2024-03"},
+    {"id": "service:hosting", "type": "service", "name": "Hébergement cloud"},
+    {"id": "service:maintenance", "type": "service", "name": "Maintenance applicative"},
+    {"id": "person:durand", "type": "person", "name": "Marie Durand"},
+    {"id": "org:acme", "type": "org", "name": "Acme Cloud SAS"}
+  ],
+  "relations": [
+    {"from": "supplier:acme", "rel": "ISSUED", "to": "invoice:INV-2026-0042"},
+    {"from": "supplier:globex", "rel": "ISSUED", "to": "invoice:INV-2026-0043"},
+    {"from": "supplier:initech", "rel": "ISSUED", "to": "invoice:INV-2026-0044"},
+    {"from": "supplier:umbrella", "rel": "ISSUED", "to": "invoice:INV-2026-0045"},
+    {"from": "supplier:acme", "rel": "SIGNED", "to": "contract:CTR-2025-09"},
+    {"from": "supplier:initech", "rel": "SIGNED", "to": "contract:CTR-2024-03"},
+    {"from": "invoice:INV-2026-0042", "rel": "UNDER_CONTRACT", "to": "contract:CTR-2025-09"},
+    {"from": "invoice:INV-2026-0044", "rel": "UNDER_CONTRACT", "to": "contract:CTR-2024-03"},
+    {"from": "contract:CTR-2025-09", "rel": "COVERS", "to": "service:hosting"},
+    {"from": "contract:CTR-2024-03", "rel": "COVERS", "to": "service:maintenance"},
+    {"from": "person:durand", "rel": "WORKS_FOR", "to": "org:acme"},
+    {"from": "org:acme", "rel": "SAME_AS", "to": "supplier:acme"}
+  ],
+  "relational": {
+    "jobs": [
+      {"job_id": "J-1001", "doc_id": "INV-2026-0042", "stage": "extracted", "status": "done"},
+      {"job_id": "J-1002", "doc_id": "INV-2026-0043", "stage": "triage", "status": "pending"},
+      {"job_id": "J-1003", "doc_id": "INV-2026-0044", "stage": "triage", "status": "error"},
+      {"job_id": "J-1004", "doc_id": "INV-2026-0045", "stage": "triage", "status": "pending"}
+    ]
+  }
+}

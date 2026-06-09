@@ -1,0 +1,33 @@
+# Runtime du lab agentathon.
+# ⚠ Épinglez les versions exactes (pip freeze) avant l'événement : DeepAgents
+#   évolue vite. Ces planchers reflètent l'API validée au moment du build.
+
+deepagents>=0.6,<0.7
+langgraph>=0.3
+langchain>=0.3
+langchain-core>=0.3
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+
+# Couche MCP (vrais serveurs + adaptateur LangChain)
+mcp>=1.2
+langchain-mcp-adapters>=0.1
+
+# Checkpointer persistant SQLite (activé si CHECKPOINT_DB est défini)
+langgraph-checkpoint-sqlite>=2.0
+aiosqlite>=0.19
+
+# Sources mockées
+networkx>=3.0          # graphe (vraies traversées)
+# sqlite3 : stdlib   # relationnel (vrai SQL)
+# vectoriel : TF-IDF maison (zéro dépendance ; voir mock_sources/vector.py)
+
+# --- Provider modèle : décommentez CELUI que vous utilisez ---
+langchain-anthropic>=0.3
+anthropic>=0.40            # utilisé directement par scripts/gen_mcp.py et gen_skill.py
+# langchain-openai>=0.2
+# langchain-google-genai>=2.0
+
+# --- Upgrade sémantique du vecteur (optionnel, ~120 MB au premier démarrage) ---
+# fastembed>=0.4          # décommentez pour activer les embeddings denses multilingues

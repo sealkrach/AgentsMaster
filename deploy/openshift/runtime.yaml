@@ -1,0 +1,73 @@
+# Runtime du lab pour UNE équipe (Deployment + Service + Route). Via envsubst.
+# Variables : $NS, $TEAM, $IMAGE
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lab-runtime
+  namespace: ${NS}
+  labels: { app: lab-runtime }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: lab-runtime }
+  template:
+    metadata:
+      labels: { app: lab-runtime }
+    spec:
+      containers:
+        - name: runtime
+          image: ${IMAGE}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: TEAM_NAME
+              value: "${TEAM}"
+            - name: LAB_TOPOLOGY
+              value: "${LAB_TOPOLOGY}"
+            - name: MCP_MODE
+              value: "mcp"
+            # Les 4 serveurs MCP, joints par DNS interne du namespace.
+            - name: MCP_DOCUMENTS_URL
+              value: "http://mcp-documents.${NS}.svc:9101/mcp"
+            - name: MCP_RELATIONAL_URL
+              value: "http://mcp-relational.${NS}.svc:9102/mcp"
+            - name: MCP_VECTOR_URL
+              value: "http://mcp-vector.${NS}.svc:9103/mcp"
+            - name: MCP_GRAPH_URL
+              value: "http://mcp-graph.${NS}.svc:9104/mcp"
+            - name: LAB_MODEL
+              valueFrom:
+                secretKeyRef: { name: lab-model, key: model }
+            # Clés du provider modèle (Bedrock/Azure/Anthropic…) : à monter
+            # depuis le même Secret `lab-model`. Exemple Anthropic :
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef: { name: lab-model, key: api_key, optional: true }
+          readinessProbe:
+            httpGet: { path: /health, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits:   { cpu: "1",  memory: 1Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lab-runtime
+  namespace: ${NS}
+spec:
+  selector: { app: lab-runtime }
+  ports:
+    - { port: 8080, targetPort: 8080 }
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: lab-runtime
+  namespace: ${NS}
+spec:
+  to: { kind: Service, name: lab-runtime }
+  port: { targetPort: 8080 }
+  tls: { termination: edge }

@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lab-runtime
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "lab.labels" . | nindent 4 }}
+    app: lab-runtime
+spec:
+  replicas: {{ .Values.runtime.replicas }}
+  selector:
+    matchLabels: { app: lab-runtime }
+  template:
+    metadata:
+      labels:
+        app: lab-runtime
+        {{- include "lab.labels" . | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+        fsGroup: {{ .Values.securityContext.fsGroup }}
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: runtime
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: {{ .Values.securityContext.readOnlyRootFilesystem }}
+            capabilities: { drop: ["ALL"] }
+          ports:
+            - containerPort: {{ .Values.runtime.port }}
+          env:
+            # Le runtime lit TEAM_NAME (affichage) ; on y place l'identifiant de use case.
+            - name: TEAM_NAME
+              value: {{ .Values.usecase | quote }}
+            - name: LAB_TOPOLOGY
+              value: {{ .Values.topology | quote }}
+            - name: MCP_MODE
+              value: "mcp"
+            {{- range .Values.mcp.servers }}
+            - name: MCP_{{ .name | upper }}_URL
+              value: "http://mcp-{{ .name }}.{{ $.Release.Namespace }}.svc:{{ .port }}/mcp"
+            {{- end }}
+            - name: LAB_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.model.secretName }}
+                  key: {{ .Values.model.modelKey }}
+            {{- if .Values.model.apiKey.enabled }}
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.model.secretName }}
+                  key: {{ .Values.model.apiKey.key }}
+                  optional: true
+            {{- end }}
+          readinessProbe:
+            httpGet: { path: /health, port: {{ .Values.runtime.port }} }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.runtime.resources | nindent 12 }}

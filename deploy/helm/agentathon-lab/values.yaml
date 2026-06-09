@@ -1,0 +1,95 @@
+# Une release Helm = un USE CASE = un namespace éphémère.
+#
+#   helm install tri-factures deploy/helm/agentathon-lab \
+#     -n agentathon-tri-factures --create-namespace \
+#     --set usecase=tri-factures --set topology=single
+#
+# Teardown : helm uninstall + kubectl delete ns (ou reaper TTL, voir deploy/helm/reaper/)
+
+usecase: tri-factures     # identifiant du use case (labels + hostname)
+ttlHours: 48              # le reaper supprime le ns au-delà de creationTimestamp + ttlHours
+
+namespace:
+  create: true            # le chart pose le Namespace ; gardez --create-namespace à l'install
+
+image:
+  repository: registry.internal/innovation/agentathon-lab
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Topologie d'agent : single | supervisor | swarm
+topology: single
+
+# --- Modèle : Secret EXISTANT (jamais créé par le chart) ---------------------
+model:
+  secretName: lab-model
+  modelKey: model
+  apiKey:
+    enabled: true
+    key: api_key
+
+# --- Plan de données ---------------------------------------------------------
+# mock = moteurs embarqués (SQLite/TF-IDF/networkx) | real = idp_mcp sur Postgres/Arango/Qdrant.
+# Le RUNTIME ne change pas : seuls les serveurs MCP changent (commande/image/secret).
+dataPlane: mock
+
+# --- Serveurs MCP (mêmes contrats dans les deux modes) -----------------------
+mcp:
+  servers:
+    - { name: documents,  port: 9101 }
+    - { name: relational, port: 9102 }
+    - { name: vector,     port: 9103 }
+    - { name: graph,      port: 9104 }
+  mockModule: mcp_servers     # dataPlane=mock -> python -m mcp_servers <name>
+  realModule: idp_mcp         # dataPlane=real -> python -m idp_mcp <name>
+  image: ""                   # image des serveurs MCP (défaut = image principale).
+                              # En real, pointez l'IMAGE IDP qui embarque idp_mcp + asyncpg/arango/qdrant.
+  backendSecret: idp-backends # Secret (DSN PG read-only, creds Arango/Qdrant, embedding) ; injecté en real via envFrom.
+  resources:
+    requests: { cpu: 50m,  memory: 128Mi }
+    limits:   { cpu: 250m, memory: 256Mi }
+
+runtime:
+  port: 8080
+  replicas: 1
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { cpu: "1",  memory: 1Gi }
+
+# --- Accès : Gateway API HTTPRoute -------------------------------------------
+# PRÉREQUIS : CRDs Gateway API + contrôleur + Gateway dont un listener autorise les
+# routes des namespaces éphémères (allowedRoutes). Exemple : deploy/helm/README.md.
+gateway:
+  enabled: true
+  name: agentathon-gateway
+  namespace: gateway-infra
+  sectionName: ""
+  baseDomain: lab.example.internal   # hostname = "<usecase>.<baseDomain>"
+
+# --- Réseau (deny-by-default + ouvertures minimales) -------------------------
+networkPolicy:
+  enabled: true            # ⚠ NO-OP sans CNI qui APPLIQUE les NetworkPolicies (Calico/Cilium)
+  modelEgressCIDR: 0.0.0.0/0    # ⚠ RESTREINDRE au CIDR de l'endpoint modèle (et embedding si même plage)
+  gatewayControllerNamespaceSelector:
+    kubernetes.io/metadata.name: gateway-infra
+  # Egress vers les VRAIES bases (appliqué seulement si dataPlane=real). ADAPTEZ les CIDR/ports.
+  # Ajoutez le port 443 de l'endpoint d'embedding s'il est hors de modelEgressCIDR.
+  backendsEgress:
+    - { cidr: 10.0.0.0/8, ports: [5432, 8529, 6333] }   # Postgres / Arango / Qdrant
+
+# --- Garde-fous namespace ----------------------------------------------------
+quota:
+  requestsCpu: "2"
+  requestsMemory: 4Gi
+  limitsCpu: "4"
+  limitsMemory: 8Gi
+  pods: "10"
+
+# Durcissement. readOnlyRootFilesystem RESTE false pour le runtime (FilesystemBackend
+# écrit sous REPO_ROOT). UID 1001 / GID 0 = build OpenShift-friendly, valide partout.
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 0
+  fsGroup: 0
+  readOnlyRootFilesystem: false

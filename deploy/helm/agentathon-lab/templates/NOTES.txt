@@ -1,0 +1,23 @@
+Use case « {{ .Values.usecase }} » déployé dans le namespace {{ .Release.Namespace }} (topologie : {{ .Values.topology }}).
+
+Accès au runtime :
+{{- if .Values.gateway.enabled }}
+  Via Gateway API : http://{{ .Values.usecase }}.{{ .Values.gateway.baseDomain }}/
+  (suppose une Gateway « {{ .Values.gateway.name }} » dans {{ .Values.gateway.namespace }}
+   dont un listener autorise les routes de ce namespace — voir deploy/helm/README.md)
+{{- end }}
+
+  Filet de sécurité zéro-dépendance (toujours dispo) :
+    kubectl -n {{ .Release.Namespace }} port-forward svc/lab-runtime {{ .Values.runtime.port }}:{{ .Values.runtime.port }}
+    -> http://localhost:{{ .Values.runtime.port }}/
+
+À NE PAS OUBLIER avant d'ouvrir aux équipes :
+  1. Créer le Secret modèle :
+       kubectl -n {{ .Release.Namespace }} create secret generic {{ .Values.model.secretName }} \
+         --from-literal=model='anthropic:claude-sonnet-4-5' --from-literal=api_key='<clé>'
+  2. Restreindre networkPolicy.modelEgressCIDR à l'endpoint approuvé.
+  3. Vérifier que le CNI APPLIQUE les NetworkPolicies (sinon l'isolation est cosmétique).
+  4. Faire UN vrai appel /invoke pour prouver la boucle (modèle + outils MCP).
+
+Teardown :
+  helm uninstall {{ .Release.Name }} -n {{ .Release.Namespace }} && kubectl delete ns {{ .Release.Namespace }}
