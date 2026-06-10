@@ -10,11 +10,18 @@ tu verras en direct quel skill il charge et quels outils il appelle.
 
 Essaie : `contrôle la facture INV-2026-0044`.
 
-## 2. Crée ton skill
+## 2. Crée ton skill (ou génère-le par l'IA)
+
+Option A — template manuel :
 ```bash
-make new-skill name=mon-skill        # ou : ./scripts/new_skill.sh mon-skill
+make new-skill name=mon-skill        # crée skills/mon-skill/SKILL.md à partir du template
 ```
-Ça crée `skills/mon-skill/SKILL.md` à partir du template.
+
+Option B — génération IA (depuis l'UI ou la ligne de commande) :
+```bash
+make gen-skill name=mon-skill description="Résumé des alertes de fraude pour un analyste risque"
+```
+Voir [`docs/GEN.md`](GEN.md) pour les détails et le choix du provider LLM.
 
 ## 3. Écris-le (l'ordre compte)
 1. **La `description`** — c'est LE texte critique. L'agent décide d'activer ton

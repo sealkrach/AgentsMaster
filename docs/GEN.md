@@ -156,6 +156,46 @@ Utile pour inspecter la réponse du LLM avant de committer.
 
 ---
 
+## Analyse statique de sécurité
+
+Chaque serveur MCP généré passe automatiquement par `scripts/static_analysis.py`
+avant toute écriture. Les violations bloquent la génération et sont affichées dans l'UI.
+
+| Règle | Ce qui est refusé |
+|---|---|
+| SQL destructeur | `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `TRUNCATE`, `CREATE` |
+| HTTP write | Méthodes `.post()`, `.put()`, `.patch()`, `.delete()` |
+| Exec système | `subprocess`, `os.system`, `os.popen` |
+| Code dynamique | `eval()`, `exec()` |
+| Écriture fichier | `open(…, 'w')`, `open(…, 'a')` |
+
+Si l'analyse échoue, relancez avec `--dry-run` pour inspecter le code brut et
+ajustez la description pour guider le LLM vers des patterns read-only.
+
+---
+
+## Registre sémantique (S1)
+
+Si `DATABASE_URL` est défini dans `.env`, chaque MCP généré est automatiquement
+sauvegardé dans PostgreSQL avec un embedding cosinus (1536 dims).
+
+La prochaine génération utilise d'abord le registre :
+- Score ≥ 0.85 → recommande de **réutiliser** un MCP existant
+- Score 0.70–0.85 → **propose** le MCP existant
+- Score < 0.70 → **génère** un nouveau MCP
+
+```bash
+# Recherche sémantique dans le registre
+curl "http://localhost:8080/registry/search?q=audit+logs+accès"
+
+# Liste tous les MCPs
+curl "http://localhost:8080/registry"
+```
+
+Voir [`docs/REGISTRY.md`](REGISTRY.md) pour le setup et les détails.
+
+---
+
 ## Dépannage
 
 | Symptôme | Cause probable | Solution |
@@ -167,6 +207,8 @@ Utile pour inspecter la réponse du LLM avant de committer.
 | `< 3 blocs Python` | Le LLM n'a pas respecté le format | Relancer ou utiliser `--dry-run` pour inspecter |
 | `Erreur API Anthropic` | Quota dépassé ou réseau | Vérifier la console Anthropic |
 | Outils absents de `/info` | Runtime pas relancé | `make up-inproc` après génération |
+| `Analyse statique : code REFUSÉ` | LLM a généré du code write | Relancer ou préciser "lecture seule" dans la description |
+| `OPENAI_API_KEY requis` | Embeddings sans clé | Définir `OPENAI_API_KEY` dans `.env` (même si `LAB_MODEL=anthropic:...`) |
 
 ---
 
@@ -195,3 +237,20 @@ Format des événements SSE :
 | `gen:line` | `text` | Ligne de sortie du script (peut contenir `[STEP:x]` ou `[PORT:x]`) |
 | `gen:done` | `code` | Génération terminée (code 0 = succès) |
 | `gen:error` | `code` | Génération échouée (code non-nul) |
+| `registry:saved` | `mcp_id`, `name`, `version` | MCP sauvegardé dans le registre (si DATABASE_URL défini) |
+| `registry:error` | `message` | Erreur lors de la sauvegarde dans le registre |
+
+Étapes `[STEP:x]` émises par `gen_mcp.py` (visibles dans les pills de l'UI) :
+
+| Étape | Description |
+|---|---|
+| `validate` | Validation du nom kebab-case |
+| `find_port` | Allocation du port (max existant + 1) |
+| `build_prompt` | Construction du prompt système |
+| `api_call` | Appel LLM (l'étape la plus longue, ~10-20s) |
+| `parse` | Extraction des 3 blocs Python |
+| `static_analysis` | Vérification sécurité READ-ONLY |
+| `write_mock` | Écriture `mock_sources/_generated.py` |
+| `write_servers` | Écriture `mcp_servers/servers_generated.py` |
+| `write_tools` | Écriture `runtime/tools_generated.py` |
+| `write_config` | Écriture `runtime/config_generated.py` |
