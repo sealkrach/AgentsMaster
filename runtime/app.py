@@ -1,36 +1,117 @@
 """Couche de service FastAPI du lab.
 
-  POST /invoke   appel synchrone        POST /stream   streaming (SSE)
-  GET  /health   readiness              GET  /info     état observable (topo, outils, skills, tracing)
-  GET  /         UI de salle de contrôle
+  POST /invoke        appel synchrone       POST /stream        streaming (SSE)
+  GET  /health        readiness             GET  /info          état observable
+  GET  /              UI de salle de contrôle
+  POST /gen-skill     génération de skill   POST /gen-mcp       génération de MCP
+  GET  /config        lecture .env          POST /config        écriture .env
+  GET  /registry      liste MCPs            GET  /registry/search  recherche sémantique
+  GET  /connectors    liste connectors      POST /connectors    upsert connector
 """
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import sys
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+try:
+    import yaml
+    _yaml_available = True
+except ImportError:
+    _yaml_available = False
+
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import agent as agent_mod
 from . import config, observability, skills_index
 from .agent import build_agent
 
+# ---------------------------------------------------------------------------
+# DB setup — graceful si DATABASE_URL absent
+# ---------------------------------------------------------------------------
+
+_db_available = False
+
+if config.REGISTRY_ENABLED:
+    try:
+        from db.database import get_db, init_db
+        from db.models import MCP, ConnectorSpec
+        from . import registry
+        _db_available = True
+    except Exception:
+        pass
+
+
+async def _maybe_get_db():
+    """FastAPI dependency : retourne une session ou None selon disponibilité DB."""
+    if not _db_available:
+        yield None
+        return
+    from db.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as session:
+        yield session
+
+
+# ---------------------------------------------------------------------------
+# Bootstrap connector specs depuis connector_specs/*.yaml
+# ---------------------------------------------------------------------------
+
+_CONNECTOR_DIR = config.REPO_ROOT / "connector_specs"
+
+
+async def _bootstrap_connectors(session: AsyncSession) -> None:
+    if not _CONNECTOR_DIR.exists() or not _yaml_available:
+        return
+    for yaml_path in sorted(_CONNECTOR_DIR.glob("*.yaml")):
+        try:
+            data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+            await registry.save_connector(
+                session,
+                name=data["name"],
+                kind=data["kind"],
+                spec_yaml=yaml_path.read_text(encoding="utf-8"),
+                capabilities=data.get("capabilities", []),
+            )
+        except Exception as exc:
+            print(f"[registry] bootstrap connector '{yaml_path.name}' ignoré : {exc}")
+
+
+# ---------------------------------------------------------------------------
+# Lifespan
+# ---------------------------------------------------------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.tracing = observability.setup()   # tracing AVANT de construire l'agent
+    app.state.tracing = observability.setup()
+
+    if _db_available:
+        try:
+            await init_db()
+            from db.database import AsyncSessionLocal
+            async with AsyncSessionLocal() as session:
+                await _bootstrap_connectors(session)
+            print("[registry] DB initialisée.")
+        except Exception as exc:
+            print(f"[registry] DB indisponible (mode dégradé) : {exc}")
+
     app.state.agent = await build_agent()
     yield
 
 
 app = FastAPI(title=config.LAB_TITLE, lifespan=lifespan)
 
+
+# ---------------------------------------------------------------------------
+# Pydantic models
+# ---------------------------------------------------------------------------
 
 class ChatRequest(BaseModel):
     message: str
@@ -47,12 +128,24 @@ class ConfigUpdate(BaseModel):
     updates: dict[str, str]
 
 
+class ConnectorUpsert(BaseModel):
+    name: str
+    kind: str
+    spec_yaml: str
+    capabilities: list[str] = []
+
+
+# ---------------------------------------------------------------------------
+# Config helpers (.env)
+# ---------------------------------------------------------------------------
+
 _RESTART_KEYS: frozenset[str] = frozenset({
     "LAB_MODEL", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL",
     "LAB_TOPOLOGY", "MCP_MODE", "MCP_HOST", "CHECKPOINT_DB",
     "HITL_WRITE", "HITL_EDIT",
     "PHOENIX_ENABLED", "PHOENIX_COLLECTOR_ENDPOINT",
     "LANGSMITH_TRACING", "LANGSMITH_API_KEY",
+    "DATABASE_URL", "EMBEDDING_MODEL", "EMBEDDING_BASE_URL",
 })
 _SECRET_KEYS: frozenset[str] = frozenset({
     "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "LANGSMITH_API_KEY",
@@ -92,15 +185,23 @@ def _write_dotenv(data: dict[str, str]) -> None:
     path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
 
+# ---------------------------------------------------------------------------
+# Core endpoints
+# ---------------------------------------------------------------------------
+
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "team": config.TEAM_NAME,
-            "topology": config.LAB_TOPOLOGY, "tools": config.MCP_MODE}
+    return {
+        "status": "ok",
+        "team": config.TEAM_NAME,
+        "topology": config.LAB_TOPOLOGY,
+        "tools": config.MCP_MODE,
+        "registry": _db_available,
+    }
 
 
 @app.get("/info")
 def info(request: Request) -> dict:
-    """Tout ce qui rend le runtime observable, pour l'UI."""
     return {
         "title": config.LAB_TITLE,
         "team": config.TEAM_NAME,
@@ -110,6 +211,7 @@ def info(request: Request) -> dict:
         "tools": agent_mod.RUNTIME_INFO.get("tools", []),
         "skills": skills_index.list_skills(str(config.SKILLS_DIR)),
         "tracing": getattr(request.app.state, "tracing", observability.status()),
+        "registry": _db_available,
     }
 
 
@@ -139,7 +241,7 @@ async def stream(req: ChatRequest, request: Request) -> StreamingResponse:
             ):
                 for node, payload in chunk.items():
                     yield _sse({"type": "update", "node": node, "payload": _safe(payload)})
-        except Exception as e:  # remonte l'erreur à l'UI plutôt que de couper net
+        except Exception as e:
             yield _sse({"type": "error", "message": str(e)[:300]})
         yield _sse({"type": "done"})
 
@@ -151,8 +253,17 @@ def index() -> FileResponse:
     return FileResponse(str(config.REPO_ROOT / "ui" / "index.html"))
 
 
+# ---------------------------------------------------------------------------
+# Generation endpoints (SSE streaming)
+# ---------------------------------------------------------------------------
+
+def _validate_gen_name(name: str) -> None:
+    if not re.fullmatch(r"[a-z0-9-]+", name):
+        raise HTTPException(400, f"Nom invalide : '{name}'. Utilisez kebab-case.")
+
+
 async def _stream_script(cmd: list[str]):
-    """Lance un script CLI comme subprocess et streame chaque ligne de stdout via SSE."""
+    """Lance un script CLI et streame chaque ligne de stdout en SSE."""
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
@@ -169,11 +280,6 @@ async def _stream_script(cmd: list[str]):
                 "code": proc.returncode})
 
 
-def _validate_gen_name(name: str) -> None:
-    if not re.fullmatch(r"[a-z0-9-]+", name):
-        raise HTTPException(400, f"Nom invalide : '{name}'. Utilisez kebab-case.")
-
-
 @app.post("/gen-skill")
 async def gen_skill(req: GenRequest) -> StreamingResponse:
     _validate_gen_name(req.name)
@@ -186,13 +292,50 @@ async def gen_skill(req: GenRequest) -> StreamingResponse:
 
 @app.post("/gen-mcp")
 async def gen_mcp_endpoint(req: GenRequest) -> StreamingResponse:
+    """Génère un MCP puis le sauvegarde dans le registre si disponible."""
     _validate_gen_name(req.name)
     cmd = [sys.executable, "scripts/gen_mcp.py",
            "--name", req.name, "--description", req.description]
     if req.dry_run:
         cmd.append("--dry-run")
-    return StreamingResponse(_stream_script(cmd), media_type="text/event-stream")
 
+    async def gen():
+        registry_payload: dict | None = None
+        async for event in _stream_script(cmd):
+            # Intercepte le marqueur [REGISTRY:json] sans le montrer à l'UI
+            if '"type": "gen:line"' in event:
+                try:
+                    d = json.loads(event[6:].strip())
+                    line_text = d.get("text", "")
+                    if line_text.startswith("[REGISTRY:") and line_text.endswith("]"):
+                        registry_payload = json.loads(line_text[len("[REGISTRY:"):-1])
+                        continue   # ne pas forwarder cette ligne à l'UI
+                except Exception:
+                    pass
+            yield event
+
+        # Sauvegarde dans le registre si DB disponible et génération réussie
+        if registry_payload and _db_available and not req.dry_run:
+            try:
+                from db.database import AsyncSessionLocal
+                async with AsyncSessionLocal() as session:
+                    mcp = await registry.save_mcp(
+                        session,
+                        name=registry_payload["name"],
+                        description=registry_payload["description"],
+                        code=registry_payload["code"],
+                    )
+                yield _sse({"type": "registry:saved", "mcp_id": str(mcp.id),
+                            "name": mcp.name, "version": mcp.version})
+            except Exception as exc:
+                yield _sse({"type": "registry:error", "message": str(exc)[:300]})
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+# ---------------------------------------------------------------------------
+# Config endpoints
+# ---------------------------------------------------------------------------
 
 @app.get("/config")
 def get_config() -> dict:
@@ -213,6 +356,99 @@ async def post_config(req: ConfigUpdate) -> dict:
     restart = [k for k in filtered if k in _RESTART_KEYS]
     return {"saved": list(filtered.keys()), "restart_required": restart}
 
+
+# ---------------------------------------------------------------------------
+# Registry endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/registry")
+async def get_registry(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    status: str | None = Query(None),
+    session: AsyncSession | None = Depends(_maybe_get_db),
+) -> dict:
+    if not _db_available or session is None:
+        return {"items": [], "registry_enabled": False}
+    from db.models import MCPStatus
+    status_filter = MCPStatus(status) if status else None
+    items = await registry.list_mcps(session, offset=offset, limit=limit, status=status_filter)
+    return {
+        "items": [m.to_dict() for m in items],
+        "offset": offset,
+        "limit": limit,
+        "registry_enabled": True,
+    }
+
+
+@app.get("/registry/search")
+async def search_registry(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(5, ge=1, le=20),
+    session: AsyncSession | None = Depends(_maybe_get_db),
+) -> dict:
+    if not _db_available or session is None:
+        return {"matches": [], "registry_enabled": False}
+    try:
+        matches = await registry.semantic_search(session, query=q, limit=limit)
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+    return {
+        "query": q,
+        "matches": [
+            {
+                **m.mcp.to_dict(),
+                "score": round(m.score, 4),
+                "recommendation": m.recommendation,
+            }
+            for m in matches
+        ],
+        "registry_enabled": True,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Connector endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/connectors")
+async def get_connectors(
+    capability: str | None = Query(None),
+    session: AsyncSession | None = Depends(_maybe_get_db),
+) -> dict:
+    if not _db_available or session is None:
+        return {"items": [], "registry_enabled": False}
+    from sqlalchemy import select
+    from db.models import ConnectorSpec
+    if capability:
+        items = await registry.get_connectors_by_capability(session, capability)
+    else:
+        from sqlalchemy import select
+        items = (await session.execute(select(ConnectorSpec).order_by(ConnectorSpec.name))).scalars().all()
+    return {"items": [c.to_dict() for c in items], "registry_enabled": True}
+
+
+@app.post("/connectors")
+async def upsert_connector(
+    req: ConnectorUpsert,
+    session: AsyncSession | None = Depends(_maybe_get_db),
+) -> dict:
+    if not _db_available or session is None:
+        raise HTTPException(503, "Registry (DATABASE_URL) non configuré.")
+    spec = await registry.save_connector(
+        session,
+        name=req.name,
+        kind=req.kind,
+        spec_yaml=req.spec_yaml,
+        capabilities=req.capabilities,
+    )
+    return spec.to_dict()
+
+
+# ---------------------------------------------------------------------------
+# SSE helpers
+# ---------------------------------------------------------------------------
 
 def _sse(obj: dict) -> str:
     return f"data: {json.dumps(obj, ensure_ascii=False, default=str)}\n\n"

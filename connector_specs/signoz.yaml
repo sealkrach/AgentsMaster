@@ -1,0 +1,88 @@
+# ConnectorSpec : SigNoz (observabilité OpenTelemetry)
+# kind: http_api
+# Capabilities: traces, metrics, logs, alerts
+
+name: signoz
+kind: http_api
+version: 1
+capabilities:
+  - traces
+  - metrics
+  - logs
+  - alerts
+
+endpoints:
+  base_url: "${SIGNOZ_URL:-http://signoz:3301}"
+  auth:
+    type: api_key
+    header: SIGNOZ-API-KEY
+    secret_env: SIGNOZ_API_KEY
+
+operations:
+  - id: get_traces
+    method: GET
+    path: /api/v1/traces
+    description: "Récupère les traces OpenTelemetry filtrées par service, durée, erreur"
+    params:
+      - name: service
+        type: string
+        required: false
+      - name: start
+        type: timestamp_ms
+        required: true
+      - name: end
+        type: timestamp_ms
+        required: true
+      - name: limit
+        type: integer
+        default: 100
+
+  - id: get_metrics
+    method: GET
+    path: /api/v1/metrics
+    description: "Récupère les séries temporelles de métriques"
+    params:
+      - name: metric_name
+        type: string
+        required: true
+      - name: start
+        type: timestamp_ms
+        required: true
+      - name: end
+        type: timestamp_ms
+        required: true
+      - name: step
+        type: integer
+        description: "Résolution en secondes"
+        default: 60
+
+  - id: get_logs
+    method: GET
+    path: /api/v1/logs
+    description: "Recherche dans les logs centralisés"
+    params:
+      - name: query
+        type: string
+        required: true
+      - name: start
+        type: timestamp_ms
+        required: true
+      - name: end
+        type: timestamp_ms
+        required: true
+      - name: limit
+        type: integer
+        default: 200
+
+security:
+  read_only: true
+  allowed_methods: [GET, HEAD]
+  network_policy: egress_to_signoz_namespace_only
+
+sandbox:
+  namespace: mcp-sandbox
+  cpu: 500m
+  memory: 512Mi
+  ttl_minutes: 15
+  run_as_non_root: true
+  no_internet_egress: true

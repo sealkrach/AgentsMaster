@@ -386,6 +386,20 @@ def main() -> int:
         print(f"\nOutils détectés : {tool_names}")
         return 0
 
+    # --- Analyse statique de sécurité ----------------------------------------
+    print("[STEP:static_analysis]")
+    sys.path.insert(0, str(Path(__file__).parent))
+    from static_analysis import analyze  # noqa: PLC0415
+    all_code = mock_block + "\n" + server_block + "\n" + inproc_block
+    is_safe, violations = analyze(all_code)
+    if not is_safe:
+        print("✗ Analyse statique : code REFUSÉ (règles read-only)")
+        for v in violations:
+            print(f"  • {v}")
+        return 1
+    print("  ✓ Analyse statique : OK")
+
+    # --- Écriture des fichiers ------------------------------------------------
     print("[STEP:write_mock]")
     print(f"  • mock_sources/_generated.py")
     _write_mock_gen(camel, mock_block)
@@ -406,6 +420,15 @@ def main() -> int:
     print(f"  Outils : {', '.join(tool_names) or '(aucun détecté — vérifiez le fichier)'}")
     print(f"  → Lancez avec :    python -m mcp_servers {args.name}")
     print(f"  → Inproc dispo après : make up-inproc")
+
+    # --- Marqueur registre (intercepté par /gen-mcp, invisible dans l'UI) ----
+    import json as _json  # noqa: PLC0415
+    print("[REGISTRY:" + _json.dumps({
+        "name": args.name,
+        "description": args.description,
+        "code": server_block,
+    }) + "]")
+
     return 0
 
 

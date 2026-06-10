@@ -30,5 +30,14 @@ anthropic>=0.40            # utilisé directement par scripts/gen_mcp.py et gen_
 openai>=1.0                # utilisé directement par scripts/gen_mcp.py et gen_skill.py
 # langchain-google-genai>=2.0
 
+pyyaml>=6.0           # lecture des connector_specs/*.yaml
+
+# --- S1 : Registre PostgreSQL + pgvector -----------------------------------
+sqlalchemy[asyncio]>=2.0
+asyncpg>=0.29
+pgvector>=0.3.0
+alembic>=1.13
+psycopg2-binary>=2.9    # utilisé par Alembic (connexion sync) uniquement
+
 # --- Upgrade sémantique du vecteur (optionnel, ~120 MB au premier démarrage) ---
 # fastembed>=0.4          # décommentez pour activer les embeddings denses multilingues

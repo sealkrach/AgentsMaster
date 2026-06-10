@@ -1,0 +1,64 @@
+# ConnectorSpec : ClickHouse (analytics SQL, stockage traces OTel)
+# kind: sql_http
+# Capabilities: analytics, traces_storage, metrics_storage
+
+name: clickhouse
+kind: sql_http
+version: 1
+capabilities:
+  - analytics
+  - traces_storage
+  - metrics_storage
+  - logs_storage
+
+endpoints:
+  base_url: "${CLICKHOUSE_URL:-http://clickhouse:8123}"
+  auth:
+    type: basic
+    username_env: CLICKHOUSE_USER
+    password_env: CLICKHOUSE_PASSWORD
+
+operations:
+  - id: query
+    method: POST
+    path: /
+    description: "Exécute une requête SQL SELECT en lecture seule"
+    content_type: "application/x-www-form-urlencoded"
+    body_param: query
+    response_format: JSONEachRow
+
+  - id: get_tables
+    method: GET
+    path: /
+    description: "Liste les tables disponibles"
+    query_params:
+      query: "SELECT name, database FROM system.tables WHERE database NOT IN ('system') FORMAT JSON"
+
+  - id: describe_table
+    method: GET
+    path: /
+    description: "Décrit le schéma d'une table"
+    query_params_template: "DESCRIBE TABLE {table} FORMAT JSON"
+
+security:
+  read_only: true
+  allowed_methods: [GET, HEAD, POST]
+  sql_restrictions:
+    forbidden_keywords: [INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, CREATE, GRANT, REVOKE]
+    allowed_pattern: "^\\s*(SELECT|WITH|DESCRIBE|SHOW|EXPLAIN)"
+  network_policy: egress_to_clickhouse_namespace_only
+
+sandbox:
+  namespace: mcp-sandbox
+  cpu: 500m
+  memory: 512Mi
+  ttl_minutes: 15
+  run_as_non_root: true
+  no_internet_egress: true
+
+tables_of_interest:
+  - otel_traces
+  - otel_metrics
+  - otel_logs
+  - platform_traces
+  - platform_metrics

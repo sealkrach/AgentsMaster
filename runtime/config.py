@@ -50,6 +50,18 @@ except ImportError:
     pass
 
 
+# --- S1 : Registre PostgreSQL + pgvector ------------------------------------
+DATABASE_URL: str = os.getenv(
+    "DATABASE_URL",
+    "postgresql+asyncpg://lab:lab@localhost:5432/agentathon",
+)
+REGISTRY_ENABLED: bool = bool(os.getenv("DATABASE_URL"))
+
+# Embeddings (OpenAI text-embedding-3-small par défaut, 1536 dims)
+EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+EMBEDDING_BASE_URL: str = os.getenv("EMBEDDING_BASE_URL", "")
+
+
 def require_model() -> str:
     if not LAB_MODEL:
         raise RuntimeError(
