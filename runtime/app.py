@@ -43,6 +43,55 @@ class GenRequest(BaseModel):
     dry_run: bool = False
 
 
+class ConfigUpdate(BaseModel):
+    updates: dict[str, str]
+
+
+_RESTART_KEYS: frozenset[str] = frozenset({
+    "LAB_MODEL", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL",
+    "LAB_TOPOLOGY", "MCP_MODE", "MCP_HOST", "CHECKPOINT_DB",
+    "HITL_WRITE", "HITL_EDIT",
+    "PHOENIX_ENABLED", "PHOENIX_COLLECTOR_ENDPOINT",
+    "LANGSMITH_TRACING", "LANGSMITH_API_KEY",
+})
+_SECRET_KEYS: frozenset[str] = frozenset({
+    "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "LANGSMITH_API_KEY",
+})
+
+
+def _read_dotenv() -> dict[str, str]:
+    path = config.REPO_ROOT / ".env"
+    if not path.exists():
+        return {}
+    result: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, _, v = line.partition("=")
+            result[k.strip()] = v.strip()
+    return result
+
+
+def _write_dotenv(data: dict[str, str]) -> None:
+    path = config.REPO_ROOT / ".env"
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    updated: set[str] = set()
+    new_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            k = stripped.split("=", 1)[0].strip()
+            if k in data:
+                new_lines.append(f"{k}={data[k]}")
+                updated.add(k)
+                continue
+        new_lines.append(line)
+    for k, v in data.items():
+        if k not in updated:
+            new_lines.append(f"{k}={v}")
+    path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "team": config.TEAM_NAME,
@@ -143,6 +192,26 @@ async def gen_mcp_endpoint(req: GenRequest) -> StreamingResponse:
     if req.dry_run:
         cmd.append("--dry-run")
     return StreamingResponse(_stream_script(cmd), media_type="text/event-stream")
+
+
+@app.get("/config")
+def get_config() -> dict:
+    current = _read_dotenv()
+    for k in (*_RESTART_KEYS, "LAB_TITLE", "TEAM_NAME"):
+        if k not in current:
+            current[k] = os.getenv(k, "")
+    for k in _SECRET_KEYS:
+        if current.get(k):
+            current[k] = "••••"
+    return current
+
+
+@app.post("/config")
+async def post_config(req: ConfigUpdate) -> dict:
+    filtered = {k: v for k, v in req.updates.items() if v != "••••"}
+    _write_dotenv(filtered)
+    restart = [k for k in filtered if k in _RESTART_KEYS]
+    return {"saved": list(filtered.keys()), "restart_required": restart}
 
 
 def _sse(obj: dict) -> str:

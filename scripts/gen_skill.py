@@ -93,35 +93,17 @@ RÈGLES DE GÉNÉRATION :
 
 
 def _call_api(system_prompt: str, name: str, description: str) -> str:
-    try:
-        import anthropic
-    except ImportError:
-        print("Erreur : le package 'anthropic' n'est pas installé. Exécutez : make install")
-        sys.exit(1)
-
-    try:
-        client = anthropic.Anthropic()
-    except anthropic.AuthenticationError:
-        print("Erreur : ANTHROPIC_API_KEY absent ou invalide. Ajoutez-le à votre .env.")
-        sys.exit(1)
-
+    sys.path.insert(0, str(Path(__file__).parent))
+    from _llm import call_llm  # noqa: PLC0415
     user_prompt = (
         f"Génère un SKILL.md pour le skill nommé \"{name}\".\n\n"
         f"Cas métier : {description}"
     )
-
     try:
-        response = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=2048,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-    except anthropic.APIError as e:
-        print(f"Erreur API Anthropic : {e}")
+        return call_llm(system_prompt, user_prompt, max_tokens=2048)
+    except Exception as e:
+        print(f"Erreur appel LLM : {e}")
         sys.exit(1)
-
-    return response.content[0].text
 
 
 def _parse_skill_md(text: str) -> str:

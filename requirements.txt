@@ -23,10 +23,11 @@ networkx>=3.0          # graphe (vraies traversées)
 # sqlite3 : stdlib   # relationnel (vrai SQL)
 # vectoriel : TF-IDF maison (zéro dépendance ; voir mock_sources/vector.py)
 
-# --- Provider modèle : décommentez CELUI que vous utilisez ---
+# --- Providers LLM (tous actifs : choisissez via LAB_MODEL) -----------------
 langchain-anthropic>=0.3
+langchain-openai>=0.2
 anthropic>=0.40            # utilisé directement par scripts/gen_mcp.py et gen_skill.py
-# langchain-openai>=0.2
+openai>=1.0                # utilisé directement par scripts/gen_mcp.py et gen_skill.py
 # langchain-google-genai>=2.0
 
 # --- Upgrade sémantique du vecteur (optionnel, ~120 MB au premier démarrage) ---

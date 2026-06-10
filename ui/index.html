@@ -14,6 +14,7 @@
     --r:12px;
   }
   *{box-sizing:border-box}
+  [hidden]{display:none!important}
   html,body{margin:0;height:100%}
   body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.5;
     -webkit-font-smoothing:antialiased}
@@ -127,6 +128,47 @@
   #genStatus .success{color:var(--ok)}
   #genStatus .error{color:var(--err)}
 
+  /* settings button */
+  .settings-btn{background:none;border:1px solid var(--line);border-radius:8px;padding:5px 10px;
+    font-size:16px;color:var(--muted);cursor:pointer;line-height:1;transition:all .15s;margin-left:6px}
+  .settings-btn:hover{border-color:var(--accent);color:var(--ink)}
+
+  /* settings modal */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;
+    display:flex;align-items:center;justify-content:center;padding:20px}
+  .modal{background:var(--surface);border-radius:16px;width:100%;max-width:560px;
+    max-height:85vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.22)}
+  .modal-header{display:flex;align-items:center;justify-content:space-between;
+    padding:18px 20px 14px;border-bottom:1px solid var(--line);
+    position:sticky;top:0;background:var(--surface);z-index:1}
+  .modal-title{font-weight:700;font-size:16px}
+  .modal-close{background:none;border:0;font-size:18px;color:var(--muted);cursor:pointer;
+    padding:4px 8px;border-radius:6px;line-height:1}
+  .modal-close:hover{background:var(--bg);color:var(--ink)}
+  .modal-body{padding:16px 20px}
+  .modal-footer{display:flex;align-items:center;gap:12px;padding:14px 20px;
+    border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--surface)}
+  .settings-group{margin-bottom:22px}
+  .settings-group-label{font-size:11px;text-transform:uppercase;letter-spacing:.07em;
+    color:var(--muted);font-weight:700;margin-bottom:10px}
+  .settings-field{margin-bottom:11px}
+  .settings-field>label{display:flex;align-items:center;gap:6px;font-size:12px;
+    font-weight:600;color:var(--ink);margin-bottom:4px}
+  .restart-badge{font-size:9px;font-weight:700;letter-spacing:.05em;color:var(--warn);
+    background:#FFF4E5;border:1px solid #F5D28A;border-radius:4px;padding:1px 5px}
+  .settings-field input[type=text],.settings-field input[type=password],.settings-field select{
+    display:block;width:100%;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;
+    background:var(--surface);font-family:var(--font);font-size:13px;color:var(--ink);
+    transition:border-color .15s;box-sizing:border-box}
+  .settings-field input:focus,.settings-field select:focus{outline:none;border-color:var(--accent)}
+  .pw-wrap{position:relative}
+  .pw-wrap input{padding-right:36px}
+  .pw-toggle{position:absolute;right:8px;top:50%;transform:translateY(-50%);
+    background:none;border:0;color:var(--muted);cursor:pointer;font-size:13px;padding:2px}
+  #settingsSaveStatus{font-size:12px;font-weight:600;flex:1}
+  .status-ok{color:var(--ok)}
+  .status-restart{color:var(--warn)}
+
   @media (max-width:840px){
     main{grid-template-columns:1fr}
     .aside{order:-1;max-height:none}
@@ -146,6 +188,7 @@
       <span class="badge" id="b-mode">outils —</span>
       <span class="badge" id="b-trace">traces —</span>
     </div>
+    <button id="settingsBtn" class="settings-btn" title="Paramètres (⌘,)" aria-label="Paramètres">⚙</button>
   </div>
   <div class="subbar" id="subbar">
     <span id="servers"></span>
@@ -214,6 +257,20 @@
       </div>
     </aside>
   </main>
+</div>
+
+<div id="settingsModal" class="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="settingsTitle">Paramètres</span>
+      <button class="modal-close" id="settingsClose" aria-label="Fermer">✕</button>
+    </div>
+    <div class="modal-body" id="settingsBody"></div>
+    <div class="modal-footer">
+      <span id="settingsSaveStatus"></span>
+      <button id="settingsSave" class="btn-primary">Enregistrer</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -550,6 +607,119 @@ function onSkillClick(description){
   document.getElementById("msg").value = phrase.length > 15 ? phrase : description.slice(0, 80);
   document.getElementById("msg").focus();
 }
+
+// ---------------------------------------------------------------------------
+// Panneau Paramètres
+// ---------------------------------------------------------------------------
+
+const SETTINGS_GROUPS = [
+  { label:"🔑 LLM Provider", fields:[
+    { key:"LAB_MODEL",         label:"Modèle",            type:"text",     placeholder:"anthropic:claude-sonnet-4-6", restart:true },
+    { key:"ANTHROPIC_API_KEY", label:"Anthropic API Key", type:"password", placeholder:"sk-ant-…", restart:true },
+    { key:"OPENAI_API_KEY",    label:"OpenAI API Key",    type:"password", placeholder:"sk-…", restart:true },
+    { key:"OPENAI_BASE_URL",   label:"OpenAI Base URL",   type:"text",     placeholder:"http://localhost:11434/v1  (optionnel)", restart:true },
+  ]},
+  { label:"⚙ Runtime", fields:[
+    { key:"LAB_TOPOLOGY",  label:"Topologie",                    type:"select", options:["single","supervisor","swarm"], restart:true },
+    { key:"MCP_MODE",      label:"Mode outils",                  type:"select", options:["inproc","mcp"], restart:true },
+    { key:"HITL_WRITE",    label:"Interrupt écriture fichier",   type:"select", options:["true","false"], restart:true },
+    { key:"HITL_EDIT",     label:"Interrupt édition fichier",    type:"select", options:["true","false"], restart:true },
+    { key:"CHECKPOINT_DB", label:"Persistance (vide = mémoire)", type:"text",   placeholder:"checkpoints.db", restart:true },
+  ]},
+  { label:"👤 Identité", fields:[
+    { key:"LAB_TITLE", label:"Titre du lab", type:"text", placeholder:"Agentathon Lab" },
+    { key:"TEAM_NAME", label:"Équipe",       type:"text", placeholder:"lab" },
+  ]},
+  { label:"🔭 Observabilité", fields:[
+    { key:"PHOENIX_ENABLED",            label:"Phoenix activé",    type:"select",   options:["false","true"], restart:true },
+    { key:"PHOENIX_COLLECTOR_ENDPOINT", label:"Phoenix endpoint",  type:"text",     placeholder:"http://phoenix:6006", restart:true },
+    { key:"LANGSMITH_TRACING",          label:"LangSmith activé",  type:"select",   options:["false","true"], restart:true },
+    { key:"LANGSMITH_API_KEY",          label:"LangSmith API Key", type:"password", placeholder:"ls-…", restart:true },
+    { key:"LANGSMITH_PROJECT",          label:"LangSmith projet",  type:"text",     placeholder:"agentathon" },
+  ]},
+];
+
+function buildSettingsModal(cfg){
+  const body = document.getElementById("settingsBody");
+  body.innerHTML = "";
+  SETTINGS_GROUPS.forEach(group => {
+    const g = document.createElement("div"); g.className = "settings-group";
+    const gl = document.createElement("div"); gl.className = "settings-group-label";
+    gl.textContent = group.label; g.appendChild(gl);
+    group.fields.forEach(f => {
+      const fd = document.createElement("div"); fd.className = "settings-field";
+      const lbl = document.createElement("label"); lbl.setAttribute("for","cfg-"+f.key);
+      lbl.textContent = f.label;
+      if(f.restart){ const b=document.createElement("span"); b.className="restart-badge"; b.textContent="⟳ redémarrer"; lbl.appendChild(b); }
+      fd.appendChild(lbl);
+      if(f.type === "select"){
+        const sel = document.createElement("select"); sel.id = "cfg-"+f.key;
+        (f.options||[]).forEach(opt=>{ const o=document.createElement("option"); o.value=o.textContent=opt; if(String(cfg[f.key]||"")===opt) o.selected=true; sel.appendChild(o); });
+        fd.appendChild(sel);
+      } else if(f.type === "password"){
+        const wrap = document.createElement("div"); wrap.className = "pw-wrap";
+        const inp = document.createElement("input"); inp.type="password"; inp.id="cfg-"+f.key;
+        inp.placeholder = f.placeholder||""; inp.value = cfg[f.key]||"";
+        const tog = document.createElement("button"); tog.type="button"; tog.className="pw-toggle"; tog.textContent="👁";
+        tog.onclick = () => { inp.type = inp.type==="password" ? "text" : "password"; };
+        wrap.appendChild(inp); wrap.appendChild(tog); fd.appendChild(wrap);
+      } else {
+        const inp = document.createElement("input"); inp.type="text"; inp.id="cfg-"+f.key;
+        inp.placeholder = f.placeholder||""; inp.value = cfg[f.key]||"";
+        fd.appendChild(inp);
+      }
+      g.appendChild(fd);
+    });
+    body.appendChild(g);
+  });
+}
+
+async function openSettings(){
+  const modal = document.getElementById("settingsModal");
+  modal.hidden = false;
+  document.getElementById("settingsSaveStatus").textContent = "";
+  try{
+    const r = await fetch("/config");
+    buildSettingsModal(r.ok ? await r.json() : {});
+  }catch(_){ buildSettingsModal({}); }
+  document.getElementById("settingsClose").focus();
+}
+
+function closeSettings(){
+  document.getElementById("settingsModal").hidden = true;
+}
+
+document.getElementById("settingsBtn").addEventListener("click", openSettings);
+document.getElementById("settingsClose").addEventListener("click", closeSettings);
+document.getElementById("settingsModal").addEventListener("click", e => { if(e.target===e.currentTarget) closeSettings(); });
+
+document.getElementById("settingsSave").addEventListener("click", async () => {
+  const updates = {};
+  SETTINGS_GROUPS.forEach(g => g.fields.forEach(f => {
+    const el = document.getElementById("cfg-"+f.key);
+    if(el) updates[f.key] = el.value;
+  }));
+  const st = document.getElementById("settingsSaveStatus");
+  st.textContent = "Enregistrement…";
+  try{
+    const r = await fetch("/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({updates})});
+    const j = await r.json();
+    if(r.ok){
+      if(j.restart_required&&j.restart_required.length){
+        st.innerHTML = '<span class="status-restart">⚠ Redémarrez le runtime pour appliquer (make up-inproc)</span>';
+      } else {
+        st.innerHTML = '<span class="status-ok">✓ Enregistré</span>';
+        setTimeout(loadInfo, 400);
+      }
+    } else { st.innerHTML='<span style="color:var(--err)">Erreur '+r.status+'</span>'; }
+  }catch(_){ st.innerHTML='<span style="color:var(--err)">Erreur réseau</span>'; }
+});
+
+// Cmd/Ctrl+, → ouvre/ferme les settings | Escape → ferme
+document.addEventListener("keydown", e => {
+  if((e.metaKey||e.ctrlKey) && !e.shiftKey && e.key===","){ e.preventDefault(); document.getElementById("settingsModal").hidden ? openSettings() : closeSettings(); }
+  if(e.key==="Escape" && !document.getElementById("settingsModal").hidden){ closeSettings(); }
+});
 </script>
 </body>
 </html>

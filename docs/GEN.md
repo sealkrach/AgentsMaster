@@ -7,12 +7,34 @@ Le kit expose deux générateurs LLM qui produisent du code production-ready
 
 ## Prérequis
 
-Définissez `ANTHROPIC_API_KEY` dans votre `.env` (copié depuis `.env.example`).
-Le modèle utilisé est `claude-sonnet-4-6` (environ 5–15 secondes par génération).
+Définissez `LAB_MODEL` et la clé API du provider choisi dans votre `.env` (copié depuis `.env.example`).
+La génération prend environ 5–15 secondes.
 
 ```bash
-echo "ANTHROPIC_API_KEY=sk-ant-..." >> .env
+# Anthropic (défaut)
+LAB_MODEL=anthropic:claude-sonnet-4-6
+ANTHROPIC_API_KEY=sk-ant-...
+
+# OpenAI
+LAB_MODEL=openai:gpt-4o
+OPENAI_API_KEY=sk-...
+
+# Endpoint compatible OpenAI (Ollama, Azure, vLLM, LM Studio, OpenRouter…)
+LAB_MODEL=openai:llama3
+OPENAI_API_KEY=ollama
+OPENAI_BASE_URL=http://localhost:11434/v1
 ```
+
+## Fournisseurs LLM supportés
+
+| `LAB_MODEL` | SDK utilisé | Variables requises |
+|---|---|---|
+| `anthropic:claude-*` | Anthropic SDK | `ANTHROPIC_API_KEY` |
+| `openai:gpt-*` | OpenAI SDK | `OPENAI_API_KEY` |
+| `openai:<modèle>` + `OPENAI_BASE_URL` | OpenAI SDK | `OPENAI_API_KEY`, `OPENAI_BASE_URL` |
+
+> Le runtime LangGraph/DeepAgents suit la même variable `LAB_MODEL` et supporte
+> les mêmes providers via `langchain-anthropic` / `langchain-openai`.
 
 ---
 
