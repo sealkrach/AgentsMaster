@@ -169,12 +169,76 @@
   .status-ok{color:var(--ok)}
   .status-restart{color:var(--warn)}
 
+  /* LLM status indicator */
+  .llm-indicator{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);
+    cursor:pointer;padding:5px 10px;border-radius:8px;border:1px solid var(--line);margin-left:6px;
+    white-space:nowrap;transition:border-color .15s;user-select:none}
+  .llm-indicator:hover{border-color:var(--accent);color:var(--ink)}
+  .llm-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .3s}
+  .llm-dot.ok{background:var(--ok);box-shadow:0 0 0 0 rgba(31,158,107,.5);animation:pulse-ok 2s infinite}
+  .llm-dot.error{background:var(--err)}
+  .llm-dot.loading{background:var(--warn)}
+  @keyframes pulse-ok{0%{box-shadow:0 0 0 0 rgba(31,158,107,.45)}70%{box-shadow:0 0 0 5px rgba(31,158,107,0)}100%{box-shadow:0 0 0 0 rgba(31,158,107,0)}}
+
+  /* topbar extra buttons */
+  .topbar-btn{background:none;border:1px solid var(--line);border-radius:8px;padding:5px 10px;
+    font-size:15px;color:var(--muted);cursor:pointer;line-height:1;transition:all .15s;margin-left:4px}
+  .topbar-btn:hover{border-color:var(--accent);color:var(--ink)}
+  .topbar-btn.spinning{display:inline-block;animation:rotate .6s linear infinite}
+  @keyframes rotate{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+  /* restart banner */
+  .restart-banner{position:fixed;top:0;left:0;right:0;z-index:2000;background:var(--ink);color:#fff;
+    display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 16px;
+    font-size:13px;font-weight:600;transition:background .4s}
+  .restart-banner.ready{background:var(--ok)}
+
+  /* admin modal */
+  .modal-lg{max-width:860px}
+  .admin-tabs-row{display:flex;gap:4px;flex:1;margin:0 8px}
+  .admin-tab{background:none;border:none;padding:6px 14px;border-radius:8px;font-size:13px;
+    font-weight:600;color:var(--muted);cursor:pointer;transition:all .15s}
+  .admin-tab.active{background:var(--accent);color:#fff}
+  .admin-tab:not(.active):hover{background:var(--bg);color:var(--ink)}
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:18px}
+  .stat-card{background:var(--bg);border-radius:10px;padding:12px 14px}
+  .stat-card .s-label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700;margin-bottom:4px}
+  .stat-card .s-val{font-size:16px;font-weight:700;color:var(--ink)}
+  .admin-section-title{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700;margin:16px 0 8px}
+  .admin-table{width:100%;border-collapse:collapse;font-size:12px}
+  .admin-table th{text-align:left;padding:6px 10px;background:var(--bg);font-size:11px;text-transform:uppercase;
+    letter-spacing:.05em;color:var(--muted);font-weight:700;border-bottom:1px solid var(--line)}
+  .admin-table td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .admin-table tr:last-child td{border-bottom:0}
+  .spill{font-size:11px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .status-pill{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;display:inline-block;white-space:nowrap}
+  .status-pill.sandbox{background:#EFF2F7;color:var(--muted)}
+  .status-pill.validated{background:#E0F0FF;color:#1A6FD4}
+  .status-pill.promoted{background:#E5F7EE;color:var(--ok)}
+  .status-pill.deprecated{background:#FDE8E8;color:var(--err)}
+  .action-btns{display:flex;gap:4px}
+  .action-btn{font-size:10px;font-weight:600;padding:2px 8px;border-radius:5px;border:1px solid var(--line);
+    background:var(--surface);color:var(--muted);cursor:pointer;transition:all .12s;white-space:nowrap}
+  .action-btn:hover{border-color:var(--accent);color:var(--accent)}
+  .connector-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-top:8px}
+  .conn-card{background:var(--bg);border-radius:10px;padding:12px 14px}
+  .conn-card .c-name{font-size:13px;font-weight:700;color:var(--ink)}
+  .conn-card .c-kind{font-size:11px;color:var(--muted);margin-bottom:6px}
+  .conn-card .c-caps{display:flex;flex-wrap:wrap;gap:4px}
+  .cap-tag{font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--surface);
+    border:1px solid var(--line);color:var(--muted)}
+  .admin-empty{text-align:center;padding:40px;color:var(--muted);font-size:13px}
+  .admin-refresh{font-size:11px;font-weight:600;color:var(--accent);background:none;border:none;
+    cursor:pointer;padding:0;margin-left:auto}
+  .admin-section-header{display:flex;align-items:center;margin:16px 0 8px}
+
   @media (max-width:840px){
     main{grid-template-columns:1fr}
     .aside{order:-1;max-height:none}
   }
   @media (prefers-reduced-motion:reduce){
     .dot.live{animation:none}
+    .llm-dot.ok{animation:none}
     *{scroll-behavior:auto}
   }
 </style>
@@ -188,6 +252,12 @@
       <span class="badge" id="b-mode">outils —</span>
       <span class="badge" id="b-trace">traces —</span>
     </div>
+    <div id="llmIndicator" class="llm-indicator" title="Statut LLM — cliquer pour tester" role="button" tabindex="0">
+      <span class="llm-dot" id="llmDot"></span>
+      <span id="llmLabel">—</span>
+    </div>
+    <button id="restartBtn" class="topbar-btn" title="Relancer le runtime" aria-label="Restart">⟳</button>
+    <button id="adminBtn" class="topbar-btn" title="Admin (⌘⇧A)" aria-label="Administration">⚡</button>
     <button id="settingsBtn" class="settings-btn" title="Paramètres (⌘,)" aria-label="Paramètres">⚙</button>
   </div>
   <div class="subbar" id="subbar">
@@ -270,6 +340,28 @@
       <span id="settingsSaveStatus"></span>
       <button id="settingsSave" class="btn-primary">Enregistrer</button>
     </div>
+  </div>
+</div>
+
+<!-- Restart banner -->
+<div id="restartBanner" class="restart-banner" hidden>
+  <span id="restartSpinner">⟳</span>
+  <span id="restartMsg">Redémarrage du runtime…</span>
+</div>
+
+<!-- Admin modal -->
+<div id="adminModal" class="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="adminTitle">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title" id="adminTitle">Administration</span>
+      <div class="admin-tabs-row">
+        <button class="admin-tab active" data-tab="system">Système</button>
+        <button class="admin-tab" data-tab="registry">Registre</button>
+        <button class="admin-tab" data-tab="executions">Exécutions</button>
+      </div>
+      <button class="modal-close" id="adminClose" aria-label="Fermer">✕</button>
+    </div>
+    <div class="modal-body" id="adminBody" style="min-height:320px"></div>
   </div>
 </div>
 
@@ -718,8 +810,251 @@ document.getElementById("settingsSave").addEventListener("click", async () => {
 // Cmd/Ctrl+, → ouvre/ferme les settings | Escape → ferme
 document.addEventListener("keydown", e => {
   if((e.metaKey||e.ctrlKey) && !e.shiftKey && e.key===","){ e.preventDefault(); document.getElementById("settingsModal").hidden ? openSettings() : closeSettings(); }
-  if(e.key==="Escape" && !document.getElementById("settingsModal").hidden){ closeSettings(); }
+  if((e.metaKey||e.ctrlKey) && e.shiftKey && e.key.toLowerCase()==="a"){ e.preventDefault(); document.getElementById("adminModal").hidden ? openAdmin() : closeAdmin(); }
+  if(e.key==="Escape"){
+    if(!document.getElementById("settingsModal").hidden) closeSettings();
+    if(!document.getElementById("adminModal").hidden) closeAdmin();
+  }
 });
+
+// ---------------------------------------------------------------------------
+// LLM status indicator
+// ---------------------------------------------------------------------------
+
+async function fetchLLMStatus(force=false){
+  const dot = document.getElementById("llmDot");
+  const label = document.getElementById("llmLabel");
+  dot.className = "llm-dot loading";
+  label.textContent = "…";
+  try{
+    const url = force ? "/llm-status?_t="+Date.now() : "/llm-status";
+    const r = await fetch(url);
+    const j = await r.json();
+    if(j.status === "ok"){
+      dot.className = "llm-dot ok";
+      const short = (j.model||"").replace(/^[^:]+:/,"");
+      label.textContent = (short||j.model||"LLM") + " · " + (j.latency_ms||"?") + "ms";
+      document.getElementById("llmIndicator").title = "✓ " + j.model + " — " + j.latency_ms + "ms";
+    } else {
+      dot.className = "llm-dot error";
+      label.textContent = "LLM ✗";
+      document.getElementById("llmIndicator").title = "Erreur : " + (j.error||"inconnu");
+    }
+  }catch(_){
+    dot.className = "llm-dot error";
+    label.textContent = "LLM ✗";
+  }
+}
+
+document.getElementById("llmIndicator").addEventListener("click", () => fetchLLMStatus(true));
+document.getElementById("llmIndicator").addEventListener("keydown", e => { if(e.key==="Enter"||e.key===" ") fetchLLMStatus(true); });
+fetchLLMStatus(); // appel au chargement
+
+// ---------------------------------------------------------------------------
+// Restart engine
+// ---------------------------------------------------------------------------
+
+let _restartPoll = null;
+
+async function restartEngine(){
+  const btn = document.getElementById("restartBtn");
+  const banner = document.getElementById("restartBanner");
+  const msg = document.getElementById("restartMsg");
+  const spinner = document.getElementById("restartSpinner");
+
+  btn.disabled = true;
+  btn.classList.add("spinning");
+  banner.className = "restart-banner";
+  banner.hidden = false;
+  msg.textContent = "Redémarrage du runtime…";
+  spinner.textContent = "⟳";
+
+  try{ await fetch("/restart",{method:"POST"}); }catch(_){}
+
+  // poll /health until it comes back
+  clearInterval(_restartPoll);
+  _restartPoll = setInterval(async()=>{
+    try{
+      const r = await fetch("/health");
+      if(r.ok){
+        clearInterval(_restartPoll);
+        banner.classList.add("ready");
+        spinner.textContent = "✓";
+        msg.textContent = "Runtime prêt !";
+        btn.disabled = false;
+        btn.classList.remove("spinning");
+        fetchLLMStatus(true);
+        setTimeout(()=>{ banner.hidden=true; banner.className="restart-banner"; }, 3000);
+        loadInfo();
+      }
+    }catch(_){}
+  }, 1500);
+}
+
+document.getElementById("restartBtn").addEventListener("click", restartEngine);
+
+// ---------------------------------------------------------------------------
+// Admin modal
+// ---------------------------------------------------------------------------
+
+let _adminTab = "system";
+
+function openAdmin(){ document.getElementById("adminModal").hidden=false; renderAdminTab(_adminTab); }
+function closeAdmin(){ document.getElementById("adminModal").hidden=true; }
+
+document.getElementById("adminBtn").addEventListener("click", openAdmin);
+document.getElementById("adminClose").addEventListener("click", closeAdmin);
+document.getElementById("adminModal").addEventListener("click", e=>{ if(e.target===e.currentTarget) closeAdmin(); });
+
+document.querySelectorAll(".admin-tab").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    document.querySelectorAll(".admin-tab").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    _adminTab = btn.dataset.tab;
+    renderAdminTab(_adminTab);
+  });
+});
+
+async function renderAdminTab(tab){
+  const body = document.getElementById("adminBody");
+  body.innerHTML = '<div class="admin-empty">Chargement…</div>';
+
+  if(tab==="system") await renderSystemTab(body);
+  else if(tab==="registry") await renderRegistryTab(body);
+  else if(tab==="executions") await renderExecutionsTab(body);
+}
+
+async function renderSystemTab(body){
+  const [health, info, llm] = await Promise.all([
+    fetch("/health").then(r=>r.json()).catch(()=>({})),
+    fetch("/info").then(r=>r.json()).catch(()=>({})),
+    fetch("/llm-status").then(r=>r.json()).catch(()=>({})),
+  ]);
+  const llmColor = llm.status==="ok" ? "var(--ok)" : "var(--err)";
+  const llmText  = llm.status==="ok" ? "✓ Connecté (" + (llm.latency_ms||"?") + "ms)" : "✗ Erreur";
+
+  body.innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-card"><div class="s-label">Modèle</div><div class="s-val" style="font-size:12px">${health.topology||"—"}</div></div>
+      <div class="stat-card"><div class="s-label">LLM</div><div class="s-val" style="font-size:12px;color:${llmColor}">${llmText}</div></div>
+      <div class="stat-card"><div class="s-label">Topologie</div><div class="s-val" style="font-size:13px">${health.topology||"—"}</div></div>
+      <div class="stat-card"><div class="s-label">Mode outils</div><div class="s-val" style="font-size:13px">${health.tools||"—"}</div></div>
+      <div class="stat-card"><div class="s-label">Registre</div><div class="s-val" style="font-size:13px">${health.registry?"actif":"inactif"}</div></div>
+      <div class="stat-card"><div class="s-label">Team</div><div class="s-val" style="font-size:13px">${health.team||"—"}</div></div>
+    </div>
+
+    <div class="admin-section-title">Modèle complet</div>
+    <div style="font-size:12px;font-family:var(--mono);background:var(--bg);padding:8px 12px;border-radius:8px">${llm.model||"—"}</div>
+
+    <div class="admin-section-title">Serveurs MCP actifs</div>
+    ${(info.mcp_servers||[]).length
+      ? `<div style="display:flex;flex-wrap:wrap;gap:6px">${(info.mcp_servers||[]).map(s=>`<span class="badge real">${s}</span>`).join("")}</div>`
+      : `<div style="font-size:12px;color:var(--muted)">Aucun (mode inproc)</div>`}
+
+    <div class="admin-section-title">Skills chargés (${(info.skills||[]).length})</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      ${(info.skills||[]).map(s=>`<span class="badge">${s.name||s}</span>`).join("") || '<span style="font-size:12px;color:var(--muted)">Aucun</span>'}
+    </div>
+  `;
+}
+
+async function renderRegistryTab(body){
+  const [reg, conn] = await Promise.all([
+    fetch("/registry?limit=100").then(r=>r.json()).catch(()=>({items:[],registry_enabled:false})),
+    fetch("/connectors").then(r=>r.json()).catch(()=>({items:[]})),
+  ]);
+
+  if(!reg.registry_enabled){
+    body.innerHTML = `<div class="admin-empty">Registre inactif.<br><small>Définissez <code>DATABASE_URL</code> dans les paramètres pour l'activer.</small></div>`;
+    return;
+  }
+
+  const statusActions = {
+    sandbox:['validated','deprecated'],
+    validated:['promoted','deprecated'],
+    promoted:['deprecated'],
+    deprecated:['validated'],
+  };
+
+  const rows = (reg.items||[]).map(m=>{
+    const actions = (statusActions[m.status]||[]).map(s=>
+      `<button class="action-btn" onclick="updateMCPStatus('${m.id}','${s}',this)">${s}</button>`
+    ).join("");
+    return `<tr>
+      <td><b>${m.name}</b></td>
+      <td>${m.version}</td>
+      <td><span class="status-pill ${m.status}">${m.status}</span></td>
+      <td>${(m.quality_score||0).toFixed(2)}</td>
+      <td>${m.usage_count||0}</td>
+      <td class="spill">${(m.created_at||"").substring(0,10)}</td>
+      <td><div class="action-btns">${actions}</div></td>
+    </tr>`;
+  }).join("");
+
+  const connCards = (conn.items||[]).map(c=>`
+    <div class="conn-card">
+      <div class="c-name">${c.name}</div>
+      <div class="c-kind">${c.kind} · v${c.version}</div>
+      <div class="c-caps">${(c.capabilities||[]).map(cap=>`<span class="cap-tag">${cap}</span>`).join("")}</div>
+    </div>`).join("");
+
+  body.innerHTML = `
+    <div class="admin-section-header">
+      <span class="admin-section-title" style="margin:0">MCPs (${(reg.items||[]).length})</span>
+      <button class="admin-refresh" onclick="renderAdminTab('registry')">↻ Rafraîchir</button>
+    </div>
+    ${rows
+      ? `<table class="admin-table"><thead><tr><th>Nom</th><th>Ver</th><th>Statut</th><th>Score</th><th>Usages</th><th>Créé</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>`
+      : `<div class="admin-empty">Aucun MCP dans le registre. Générez-en via le panneau Créer.</div>`}
+
+    <div class="admin-section-header" style="margin-top:20px">
+      <span class="admin-section-title" style="margin:0">Connecteurs (${(conn.items||[]).length})</span>
+    </div>
+    <div class="connector-cards">${connCards||'<div class="admin-empty">Aucun connecteur.</div>'}</div>
+  `;
+}
+
+async function updateMCPStatus(id, status, btn){
+  btn.disabled = true;
+  btn.textContent = "…";
+  try{
+    const r = await fetch("/registry/"+id+"/status",{
+      method:"PATCH",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({status})
+    });
+    if(r.ok) renderAdminTab("registry");
+    else { btn.disabled=false; btn.textContent=status; alert("Erreur "+r.status); }
+  }catch(_){ btn.disabled=false; btn.textContent=status; }
+}
+
+async function renderExecutionsTab(body){
+  const data = await fetch("/registry/executions?limit=50").then(r=>r.json()).catch(()=>({items:[],registry_enabled:false}));
+
+  if(!data.registry_enabled){
+    body.innerHTML = `<div class="admin-empty">Registre inactif.<br><small>Définissez <code>DATABASE_URL</code> pour voir les exécutions.</small></div>`;
+    return;
+  }
+
+  const rows = (data.items||[]).map(e=>`<tr>
+    <td><b>${e.mcp_name||"—"}</b></td>
+    <td class="spill" title="${e.question||""}">${(e.question||"—").substring(0,80)}</td>
+    <td>${e.latency_ms!=null ? e.latency_ms+"ms" : "—"}</td>
+    <td>${e.tokens_used!=null ? e.tokens_used : "—"}</td>
+    <td>${e.result_score!=null ? e.result_score.toFixed(2) : "—"}</td>
+    <td>${(e.created_at||"").substring(0,16).replace("T"," ")}</td>
+  </tr>`).join("");
+
+  body.innerHTML = `
+    <div class="admin-section-header">
+      <span class="admin-section-title" style="margin:0">Dernières exécutions</span>
+      <button class="admin-refresh" onclick="renderAdminTab('executions')">↻ Rafraîchir</button>
+    </div>
+    ${rows
+      ? `<table class="admin-table"><thead><tr><th>MCP</th><th>Question</th><th>Latence</th><th>Tokens</th><th>Score</th><th>Date</th></tr></thead><tbody>${rows}</tbody></table>`
+      : `<div class="admin-empty">Aucune exécution enregistrée.</div>`}
+  `;
+}
 </script>
 </body>
 </html>

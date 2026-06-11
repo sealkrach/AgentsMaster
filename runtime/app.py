@@ -1,12 +1,14 @@
 """Couche de service FastAPI du lab.
 
-  POST /invoke        appel synchrone       POST /stream        streaming (SSE)
-  GET  /health        readiness             GET  /info          état observable
-  GET  /              UI de salle de contrôle
-  POST /gen-skill     génération de skill   POST /gen-mcp       génération de MCP
-  GET  /config        lecture .env          POST /config        écriture .env
-  GET  /registry      liste MCPs            GET  /registry/search  recherche sémantique
-  GET  /connectors    liste connectors      POST /connectors    upsert connector
+  POST /invoke              appel synchrone    POST /stream          streaming (SSE)
+  GET  /health              readiness          GET  /info            état observable
+  GET  /llm-status          ping LLM (TTL 60s) POST /restart         recharge l'engine
+  GET  /                    UI chat
+  POST /gen-skill           génère skill       POST /gen-mcp         génère MCP
+  GET  /config              lecture .env       POST /config          écriture .env
+  GET  /registry            liste MCPs         GET  /registry/search recherche cosinus
+  PATCH /registry/{id}/status change statut   GET  /registry/executions dernières exécs
+  GET  /connectors          liste connectors   POST /connectors      upsert connector
 """
 from __future__ import annotations
 
@@ -15,6 +17,7 @@ import json
 import os
 import re
 import sys
+import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -26,6 +29,7 @@ except ImportError:
     _yaml_available = False
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -358,6 +362,55 @@ async def post_config(req: ConfigUpdate) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Engine restart + LLM status
+# ---------------------------------------------------------------------------
+
+@app.post("/restart")
+async def restart_engine() -> dict:
+    """Remplace le process courant par une nouvelle instance (os.execv)."""
+    async def _do_restart():
+        await asyncio.sleep(0.4)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    asyncio.create_task(_do_restart())
+    return {"status": "restarting"}
+
+
+_llm_cache: dict = {"ts": 0.0, "result": None}
+
+
+@app.get("/llm-status")
+async def llm_status() -> dict:
+    """Ping léger du LLM configuré. Résultat mis en cache 60 secondes."""
+    if _llm_cache["result"] and time.time() - _llm_cache["ts"] < 60:
+        return _llm_cache["result"]
+
+    t0 = time.time()
+    try:
+        scripts_dir = str(config.REPO_ROOT / "scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        from _llm import call_llm  # noqa: PLC0415
+        config.require_model()
+        call_llm("Tu es un assistant.", "Réponds uniquement 'ok'.", max_tokens=5)
+        result: dict = {
+            "status": "ok",
+            "model": config.LAB_MODEL,
+            "latency_ms": int((time.time() - t0) * 1000),
+        }
+    except Exception as exc:
+        result = {
+            "status": "error",
+            "model": config.LAB_MODEL,
+            "error": str(exc)[:200],
+            "latency_ms": int((time.time() - t0) * 1000),
+        }
+    _llm_cache["ts"] = time.time()
+    _llm_cache["result"] = result
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Registry endpoints
 # ---------------------------------------------------------------------------
 
@@ -406,6 +459,68 @@ async def search_registry(
         ],
         "registry_enabled": True,
     }
+
+
+class StatusUpdate(BaseModel):
+    status: str
+
+
+@app.patch("/registry/{mcp_id}/status")
+async def update_mcp_status(
+    mcp_id: str,
+    req: StatusUpdate,
+    session: AsyncSession | None = Depends(_maybe_get_db),
+) -> dict:
+    if not _db_available or session is None:
+        raise HTTPException(503, "Registry non configuré.")
+    from db.models import MCPStatus  # noqa: PLC0415
+    try:
+        new_status = MCPStatus(req.status)
+    except ValueError:
+        raise HTTPException(400, f"Statut invalide : {req.status}")
+    from sqlalchemy import update as sa_update  # noqa: PLC0415
+    from db.models import MCP as MCPModel      # noqa: PLC0415
+    await session.execute(
+        sa_update(MCPModel)
+        .where(MCPModel.id == mcp_id)
+        .values(status=new_status)
+    )
+    await session.commit()
+    return {"id": mcp_id, "status": req.status}
+
+
+@app.get("/registry/executions")
+async def get_executions(
+    limit: int = Query(50, ge=1, le=200),
+    session: AsyncSession | None = Depends(_maybe_get_db),
+) -> dict:
+    if not _db_available or session is None:
+        return {"items": [], "registry_enabled": False}
+    from sqlalchemy import select, text as sa_text  # noqa: PLC0415
+    from db.models import MCPExecution, MCP as MCPModel  # noqa: PLC0415
+    stmt = sa_text("""
+        SELECT e.id, e.mcp_id, m.name AS mcp_name, e.question,
+               e.latency_ms, e.tokens_used, e.result_score, e.created_at
+        FROM mcp_executions e
+        LEFT JOIN mcps m ON m.id = e.mcp_id
+        ORDER BY e.created_at DESC
+        LIMIT :limit
+    """)
+    rows = (await session.execute(stmt, {"limit": limit})).mappings().all()
+    items = [
+        {
+            "id": str(r["id"]),
+            "mcp_id": str(r["mcp_id"]),
+            "mcp_name": r["mcp_name"],
+            "question": (r["question"] or "")[:120],
+            "latency_ms": r["latency_ms"],
+            "tokens_used": r["tokens_used"],
+            "result_score": r["result_score"],
+            "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+        }
+        for r in rows
+    ]
+    return {"items": items, "registry_enabled": True}
 
 
 # ---------------------------------------------------------------------------
