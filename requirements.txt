@@ -31,6 +31,7 @@ openai>=1.0                # utilisé directement par scripts/gen_mcp.py et gen_
 # langchain-google-genai>=2.0
 
 pyyaml>=6.0           # lecture des connector_specs/*.yaml
+python-dotenv>=1.0    # charge .env au démarrage (settings panel → restart effectif)
 
 # --- S1 : Registre PostgreSQL + pgvector -----------------------------------
 sqlalchemy[asyncio]>=2.0

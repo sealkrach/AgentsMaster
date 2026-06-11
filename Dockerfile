@@ -5,11 +5,16 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY runtime/ runtime/
+COPY scripts/ scripts/
 COPY mock_sources/ mock_sources/
 COPY mcp_servers/ mcp_servers/
 COPY skills/ skills/
 COPY data/ data/
 COPY ui/ ui/
+COPY db/ db/
+COPY connector_specs/ connector_specs/
+COPY alembic/ alembic/
+COPY alembic.ini .
 
 # OpenShift : UID arbitraire, le groupe root doit pouvoir écrire.
 RUN mkdir -p /app/workspace && chgrp -R 0 /app && chmod -R g=u /app

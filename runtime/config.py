@@ -6,6 +6,13 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+# Charge .env au démarrage — essentiel après un POST /restart (os.execv relit ce fichier)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(REPO_ROOT / ".env", override=False)  # override=False : env système a priorité
+except ImportError:
+    pass
+
 # --- Modèle (provider:model). Pointez vers votre endpoint approuvé. ---------
 LAB_MODEL = os.getenv("LAB_MODEL", "").strip()
 
