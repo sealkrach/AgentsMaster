@@ -232,6 +232,33 @@
     cursor:pointer;padding:0;margin-left:auto}
   .admin-section-header{display:flex;align-items:center;margin:16px 0 8px}
 
+  /* MCP servers panel */
+  .srv-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line)}
+  .srv-row:first-child{border-top:0}
+  .srv-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .3s}
+  .srv-dot.up{background:var(--ok);box-shadow:0 0 0 0 rgba(31,158,107,.4);animation:pulse-ok 2.5s infinite}
+  .srv-dot.down{background:var(--line)}
+  .srv-name{flex:1;font-size:12.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .srv-url{font-size:10px;color:var(--muted);font-family:var(--mono);display:block;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+  .srv-btns{display:flex;gap:4px;flex-shrink:0}
+  .srv-btn{font-size:11px;font-weight:700;padding:3px 8px;border-radius:5px;border:1px solid var(--line);
+    background:var(--surface);color:var(--muted);cursor:pointer;transition:all .12s;line-height:1.3}
+  .srv-btn:hover{border-color:var(--accent);color:var(--accent)}
+  .srv-btn.start:hover{border-color:var(--ok);color:var(--ok)}
+  .srv-btn.stop:hover{border-color:var(--err);color:var(--err)}
+  .srv-btn:disabled{opacity:.4;cursor:not-allowed}
+  .srv-log{font-family:var(--mono);font-size:10px;color:var(--muted);padding:6px 8px;
+    background:var(--bg);border-radius:6px;margin-top:4px;max-height:80px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;display:none}
+  .srv-log.visible{display:block}
+
+  /* post-gen action bar */
+  .gen-post-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+  .gen-post-btn{font-size:12px;font-weight:650;padding:6px 12px;border-radius:8px;border:1.5px solid var(--line);
+    background:var(--surface);color:var(--ink);cursor:pointer;transition:all .15s;white-space:nowrap}
+  .gen-post-btn:hover{border-color:var(--accent);color:var(--accent)}
+  .gen-post-btn.primary{background:var(--ok);border-color:var(--ok);color:#fff}
+  .gen-post-btn.primary:hover{opacity:.85}
+
   @media (max-width:840px){
     main{grid-template-columns:1fr}
     .aside{order:-1;max-height:none}
@@ -321,6 +348,13 @@
           <div id="genStatus"></div>
         </div>
       </div>
+      <div class="panel" id="mcpServersPanel">
+        <h3 style="display:flex;align-items:center">
+          Serveurs MCP
+          <button class="admin-refresh" style="margin-left:auto" onclick="loadMcpServers()">↻</button>
+        </h3>
+        <div id="mcpServersList"><div style="font-size:12px;color:var(--muted)">Chargement…</div></div>
+      </div>
       <div class="panel legend">
         <h3>Sources d'outils</h3>
         <div id="legend"></div>
@@ -356,6 +390,7 @@
       <span class="modal-title" id="adminTitle">Administration</span>
       <div class="admin-tabs-row">
         <button class="admin-tab active" data-tab="system">Système</button>
+        <button class="admin-tab" data-tab="servers">Serveurs</button>
         <button class="admin-tab" data-tab="registry">Registre</button>
         <button class="admin-tab" data-tab="executions">Exécutions</button>
       </div>
@@ -527,7 +562,7 @@ let asideOpen=true;
 $("#skillsToggle").addEventListener("click",()=>{ asideOpen=!asideOpen; $("#aside").style.display=asideOpen?"":"none";
   $("#skillsToggle").textContent=asideOpen?"masquer le panneau":"afficher le panneau"; });
 
-renderExamples(); loadInfo();
+renderExamples(); loadInfo(); loadMcpServers();
 
 // ---------------------------------------------------------------------------
 // Création d'éléments agentiques (Skill / Serveur MCP)
@@ -669,7 +704,23 @@ async function genRun(type, name, desc, dryRun){
         } else if(ev.type === "gen:done"){
           steps.forEach(s => { const e=document.getElementById("step-"+s); if(e) e.className="gen-step done"; });
           stat.innerHTML = '<span class="success">✓ '+(dryRun ? "Aperçu terminé" : "Créé avec succès")+'</span>';
-          if(!dryRun) setTimeout(loadInfo, 600);
+          if(!dryRun){
+            setTimeout(loadInfo, 600);
+            setTimeout(loadMcpServers, 800);
+            if(type === "mcp" && !dryRun){
+              const bar = document.createElement("div"); bar.className="gen-post-actions";
+              bar.innerHTML = `
+                <button class="gen-post-btn primary" onclick="startMcpServer('${esc(name)}',this)">▶ Démarrer le serveur</button>
+                <button class="gen-post-btn" onclick="restartEngine()">⟳ Recharger le runtime</button>
+              `;
+              stat.appendChild(bar);
+            }
+          }
+        } else if(ev.type === "registry:saved"){
+          const badge = document.createElement("span");
+          badge.style.cssText = "font-size:11px;margin-left:8px;color:var(--accent)";
+          badge.textContent = "Enregistré dans le registre (" + ev.version + ")";
+          stat.appendChild(badge);
         } else if(ev.type === "gen:error"){
           stat.innerHTML = '<span class="error">Erreur (code '+(ev.code||"?")+')</span>';
         }
@@ -920,6 +971,7 @@ async function renderAdminTab(tab){
   body.innerHTML = '<div class="admin-empty">Chargement…</div>';
 
   if(tab==="system") await renderSystemTab(body);
+  else if(tab==="servers") await renderAdminServersTab(body);
   else if(tab==="registry") await renderRegistryTab(body);
   else if(tab==="executions") await renderExecutionsTab(body);
 }
@@ -955,6 +1007,39 @@ async function renderSystemTab(body){
     <div style="display:flex;flex-wrap:wrap;gap:6px">
       ${(info.skills||[]).map(s=>`<span class="badge">${s.name||s}</span>`).join("") || '<span style="font-size:12px;color:var(--muted)">Aucun</span>'}
     </div>
+  `;
+}
+
+async function renderAdminServersTab(body){
+  const j = await fetch("/mcp-servers").then(r=>r.json()).catch(()=>({servers:[]}));
+  const servers = j.servers||[];
+
+  const rows = servers.map(srv=>{
+    const dotCls = srv.running ? "srv-dot up" : "srv-dot down";
+    const pid = srv.running ? `<span style="font-size:10px;color:var(--muted);font-family:var(--mono)">pid ${srv.pid}</span>` : "";
+    const startStop = srv.running
+      ? `<button class="action-btn" onclick="stopMcpServer('${srv.name}',this);setTimeout(()=>renderAdminTab('servers'),600)">■ Arrêter</button>`
+      : `<button class="action-btn" onclick="startMcpServer('${srv.name}',this);setTimeout(()=>renderAdminTab('servers'),3000)">▶ Démarrer</button>`;
+    const tag = srv.builtin ? `<span class="status-pill sandbox">builtin</span>` : `<span class="status-pill validated">généré</span>`;
+    return `<tr>
+      <td><span class="${dotCls}" style="display:inline-block;vertical-align:middle;margin-right:6px"></span><b>${srv.name}</b></td>
+      <td>${tag}</td>
+      <td style="font-size:11px;font-family:var(--mono)">${srv.url||"—"}</td>
+      <td>${pid}</td>
+      <td><div class="action-btns">${startStop}</div></td>
+    </tr>`;
+  }).join("");
+
+  body.innerHTML = `
+    <div class="admin-section-header">
+      <span class="admin-section-title" style="margin:0">Serveurs MCP (${servers.length})</span>
+      <button class="admin-refresh" onclick="renderAdminTab('servers')">↻ Rafraîchir</button>
+    </div>
+    ${rows
+      ? `<table class="admin-table"><thead><tr><th>Nom</th><th>Type</th><th>URL</th><th>PID</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table>`
+      : `<div class="admin-empty">Aucun serveur MCP configuré.</div>`}
+    <div style="margin-top:12px;font-size:11px;color:var(--muted)">Mode : <b>${j.mode||"—"}</b></div>
+    <div id="adminSrvLog" style="margin-top:8px"></div>
   `;
 }
 
@@ -1026,6 +1111,83 @@ async function updateMCPStatus(id, status, btn){
     if(r.ok) renderAdminTab("registry");
     else { btn.disabled=false; btn.textContent=status; alert("Erreur "+r.status); }
   }catch(_){ btn.disabled=false; btn.textContent=status; }
+}
+
+// ---------------------------------------------------------------------------
+// MCP servers panel (start / stop / status)
+// ---------------------------------------------------------------------------
+
+async function loadMcpServers(){
+  const container = document.getElementById("mcpServersList");
+  if(!container) return;
+  try{
+    const r = await fetch("/mcp-servers");
+    if(!r.ok){ container.innerHTML='<div style="font-size:12px;color:var(--muted)">Indisponible</div>'; return; }
+    const j = await r.json();
+    const servers = j.servers||[];
+    if(!servers.length){ container.innerHTML='<div style="font-size:12px;color:var(--muted)">Aucun serveur MCP configuré.</div>'; return; }
+    container.innerHTML = "";
+    servers.forEach(srv => {
+      const row = document.createElement("div"); row.className="srv-row"; row.id="srvrow-"+srv.name;
+      const dot = document.createElement("span"); dot.className="srv-dot "+(srv.running?"up":"down"); dot.id="srvdot-"+srv.name;
+      const info = document.createElement("div"); info.style.flex="1;min-width:0";
+      const nm = document.createElement("div"); nm.className="srv-name"; nm.textContent=srv.name;
+      info.appendChild(nm);
+      if(srv.url){ const u=document.createElement("span"); u.className="srv-url"; u.textContent=srv.url; info.appendChild(u); }
+      const btns = document.createElement("div"); btns.className="srv-btns";
+      if(srv.running){
+        const stopBtn = document.createElement("button"); stopBtn.className="srv-btn stop"; stopBtn.textContent="■";
+        stopBtn.title="Arrêter "+srv.name;
+        stopBtn.onclick=()=>stopMcpServer(srv.name, stopBtn);
+        btns.appendChild(stopBtn);
+      } else {
+        const startBtn = document.createElement("button"); startBtn.className="srv-btn start"; startBtn.textContent="▶";
+        startBtn.title="Démarrer "+srv.name;
+        startBtn.onclick=()=>startMcpServer(srv.name, startBtn);
+        btns.appendChild(startBtn);
+      }
+      const logEl = document.createElement("pre"); logEl.className="srv-log"; logEl.id="srvlog-"+srv.name;
+      row.appendChild(dot); row.appendChild(info); row.appendChild(btns);
+      container.appendChild(row); container.appendChild(logEl);
+    });
+  }catch(e){ container.innerHTML='<div style="font-size:12px;color:var(--err)">Erreur : '+esc(String(e))+'</div>'; }
+}
+
+async function startMcpServer(name, triggerBtn){
+  const dot = document.getElementById("srvdot-"+name);
+  const logEl = document.getElementById("srvlog-"+name);
+  if(triggerBtn){ triggerBtn.disabled=true; triggerBtn.textContent="…"; }
+  if(logEl){ logEl.textContent=""; logEl.classList.add("visible"); }
+  if(dot) dot.className="srv-dot loading";
+
+  try{
+    const res = await fetch("/mcp-servers/"+encodeURIComponent(name)+"/start", {method:"POST"});
+    if(!res.ok||!res.body){ if(logEl) logEl.textContent+="Erreur HTTP "+res.status+"\n"; setTimeout(loadMcpServers,600); return; }
+    const reader=res.body.getReader(); const dec=new TextDecoder(); let buf="";
+    while(true){
+      const {value,done}=await reader.read(); if(done) break;
+      buf+=dec.decode(value,{stream:true});
+      let i;
+      while((i=buf.indexOf("\n\n"))>=0){
+        const block=buf.slice(0,i); buf=buf.slice(i+2);
+        const line=block.split("\n").find(l=>l.startsWith("data:"));
+        if(!line) continue;
+        let ev; try{ ev=JSON.parse(line.slice(5).trim()); }catch(_){ continue; }
+        if(ev.type==="log" && logEl){ logEl.textContent+=ev.text+"\n"; logEl.scrollTop=logEl.scrollHeight; }
+        if(ev.type==="started"){ if(dot) dot.className="srv-dot up"; setTimeout(loadMcpServers,400); return; }
+        if(ev.type==="done"){ setTimeout(loadMcpServers,400); return; }
+      }
+    }
+  }catch(e){ if(logEl) logEl.textContent+=String(e)+"\n"; }
+  setTimeout(loadMcpServers, 600);
+}
+
+async function stopMcpServer(name, btn){
+  if(btn){ btn.disabled=true; btn.textContent="…"; }
+  try{
+    await fetch("/mcp-servers/"+encodeURIComponent(name), {method:"DELETE"});
+  }catch(_){}
+  setTimeout(loadMcpServers, 400);
 }
 
 async function renderExecutionsTab(body){

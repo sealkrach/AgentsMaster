@@ -377,6 +377,7 @@ async def restart_engine() -> dict:
 
 
 _llm_cache: dict = {"ts": 0.0, "result": None}
+_mcp_processes: dict[str, asyncio.subprocess.Process] = {}
 
 
 @app.get("/llm-status")
@@ -459,6 +460,91 @@ async def search_registry(
         ],
         "registry_enabled": True,
     }
+
+
+# ---------------------------------------------------------------------------
+# MCP server lifecycle (start / stop / list)
+# ---------------------------------------------------------------------------
+
+@app.get("/mcp-servers")
+async def list_mcp_servers() -> dict:
+    """Liste les serveurs MCP connus avec leur statut (running/stopped)."""
+    all_names: set[str] = set(config.MCP_SERVERS.keys()) | set(_mcp_processes.keys())
+    servers = []
+    for name in sorted(all_names):
+        proc = _mcp_processes.get(name)
+        running = proc is not None and proc.returncode is None
+        url = config.MCP_SERVERS.get(name, "")
+        port: int | None = None
+        if url:
+            try:
+                port = int(url.split(":")[-1].split("/")[0])
+            except ValueError:
+                pass
+        servers.append({
+            "name": name,
+            "running": running,
+            "pid": proc.pid if running else None,
+            "url": url,
+            "port": port,
+            "builtin": name in {"documents", "relational", "vector", "graph"},
+        })
+    return {"servers": servers, "mode": config.MCP_MODE}
+
+
+@app.post("/mcp-servers/{name}/start")
+async def start_mcp_server(name: str) -> StreamingResponse:
+    """Lance un serveur MCP et streame les premières lignes de log."""
+    proc = _mcp_processes.get(name)
+    if proc and proc.returncode is None:
+        async def _already():
+            yield _sse({"type": "log", "text": f"Serveur '{name}' déjà actif (pid {proc.pid})."})
+            yield _sse({"type": "started", "name": name, "pid": proc.pid})
+        return StreamingResponse(_already(), media_type="text/event-stream")
+
+    async def _gen():
+        p = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "mcp_servers", name,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=str(config.REPO_ROOT),
+        )
+        _mcp_processes[name] = p
+        yield _sse({"type": "log", "text": f"▶ Démarrage de '{name}'…"})
+        lines_seen = 0
+        async for raw in p.stdout:
+            line = raw.decode(errors="replace").rstrip()
+            if not line:
+                continue
+            yield _sse({"type": "log", "text": line})
+            lines_seen += 1
+            # Serveur prêt quand uvicorn/fastmcp imprime le port
+            if any(tok in line for tok in ("Uvicorn running", "running on", "Listening", str(name))):
+                yield _sse({"type": "started", "name": name, "pid": p.pid})
+                return  # détache — le process continue en arrière-plan
+            if lines_seen >= 12:
+                yield _sse({"type": "started", "name": name, "pid": p.pid})
+                return
+        code = await p.wait()
+        _mcp_processes.pop(name, None)
+        yield _sse({"type": "done", "code": code})
+
+    return StreamingResponse(_gen(), media_type="text/event-stream")
+
+
+@app.delete("/mcp-servers/{name}")
+async def stop_mcp_server(name: str) -> dict:
+    """Arrête un serveur MCP lancé depuis l'UI."""
+    proc = _mcp_processes.get(name)
+    if proc and proc.returncode is None:
+        proc.terminate()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=3.0)
+        except asyncio.TimeoutError:
+            proc.kill()
+        _mcp_processes.pop(name, None)
+        return {"status": "stopped", "name": name}
+    return {"status": "not_running", "name": name}
 
 
 class StatusUpdate(BaseModel):
